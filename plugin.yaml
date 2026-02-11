@@ -1,0 +1,73 @@
+id: lumide_flutter
+name: 'Flutter'
+description: 'Flutter support for Lumide IDE'
+version: '1.0.0'
+entry_point: 'bin/main.dart'
+
+activation_events:
+  - 'workspaceContains:pubspec.yaml'
+
+permissions:
+  - fileSystem:
+      - '${workspace}/**'
+  - shell:
+      - flutter
+      - dart
+      - sh
+      - bash
+
+configuration:
+  - key: flutter.hotReloadOnSave
+    type: boolean
+    default: true
+    title: 'Hot Reload on Save'
+    description: 'Automatically hot reload the Flutter app when a file is saved.'
+  - key: flutter.clearLogOnHotRestart
+    type: boolean
+    default: true
+    title: 'Clear Log on Hot Restart'
+    description: 'Clear the Flutter run log when performing a Hot Restart.'
+  - key: flutter.logEntryLimit
+    type: number
+    default: 5000
+    title: 'Log Entry Limit'
+    description: 'Maximum number of log entries to keep in the output channels.'
+
+contributes:
+  commands:
+    - id: flutter.doctor
+      title: 'Flutter: Doctor'
+      category: 'Flutter'
+    - id: flutter.pub.get
+      title: 'Flutter: Pub Get'
+      category: 'Flutter'
+    - id: flutter.clean
+      title: 'Flutter: Clean'
+      category: 'Flutter'
+    - id: flutter.run
+      title: 'Flutter: Run'
+      category: 'Flutter'
+    - id: flutter.hotReload
+      title: 'Flutter: Hot Reload'
+      category: 'Flutter'
+    - id: flutter.hotRestart
+      title: 'Flutter: Hot Restart'
+      category: 'Flutter'
+    - id: flutter.stop
+      title: 'Flutter: Stop App'
+      category: 'Flutter'
+    - id: flutter.create
+      title: 'Flutter: New Project'
+      category: 'Flutter'
+    - id: flutter.selectDevice
+      title: 'Flutter: Select Device'
+      category: 'Flutter'
+    - id: flutter.openDevTools
+      title: 'Flutter: Open DevTools'
+      category: 'Flutter'
+    - id: flutter.tools
+      title: 'Flutter: Tools Menu'
+      category: 'Flutter'
+    - id: flutter.openDevToolsWebview
+      title: 'Flutter: Open DevTools'
+      category: 'Flutter'

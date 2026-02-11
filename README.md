@@ -1,0 +1,70 @@
+# lumide_flutter
+
+[![pub package](https://img.shields.io/pub/v/lumide_flutter.svg)](https://pub.dev/packages/lumide_flutter) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Powered by SoFluffy](https://img.shields.io/badge/Powered%20by-SoFluffy-orange)](https://sofluffy.io)
+
+The official Flutter extension for [Lumide IDE](https://lumide.dev).
+
+`lumide_flutter` turns Lumide into a fully-fledged Flutter development environment. It provides project management, device handling, debugging tools, and real-time log streaming.
+
+## Features
+
+### 🚀 Project Management
+- **Create Projects**: Easily start new Flutter projects (`flutter.create`).
+- **Dependency Management**: Run `pub get` for single projects or the entire workspace in parallel.
+- **Environment Checks**: Built-in `flutter doctor` integration to diagnose issues.
+
+### 📱 Device Manager
+- **Dynamic Detection**: Automatically detects connected devices (iOS, Android, Web, Desktop).
+- **Quick Switching**: Switch active devices instantly via the Status Bar or Command Palette.
+- **Platform Icons**: Visual indicators for device types (Mobile, Web, Monitor).
+
+### ⚡ Run & Debug
+- **Hot Reload**: Trigger hot reload on save (configurable) or via the toolbar.
+- **Hot Restart**: Full application restart with a single click.
+- **DevTools**: Open [Dart DevTools](https://flutter.dev/devtools) directly within a Lumide pane or in your external browser.
+- **Log Streaming**: View colored, real-time logs in the **Flutter** output channel. Separate **Build Output** keeps things clean.
+
+### 🛠 Editor Integration
+- **Status Bar**: Shows the active Flutter SDK version. Click to access the *Flutter Tools* menu.
+- **Toolbar**: Context-aware controls (Run, Stop, Reload, Restart) appear when a Flutter project is active.
+
+## Commands
+
+Access these via the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`):
+
+| Command ID | Title | Description |
+|---|---|---|
+| `flutter.doctor` | **Flutter: Doctor** | Run diagnostics |
+| `flutter.pub.get` | **Flutter: Pub Get** | Get packages for current project |
+| `flutter.clean` | **Flutter: Clean** | Delete build/ directory |
+| `flutter.create` | **Flutter: New Project** | Create a basic Flutter app |
+| `flutter.selectDevice` | **Flutter: Select Device** | Choose run target |
+| `flutter.run` | **Flutter: Run** | Start app on selected device |
+| `flutter.hotReload` | **Flutter: Hot Reload** | Update code changes (JIT) |
+| `flutter.hotRestart` | **Flutter: Hot Restart** | Restart app state |
+| `flutter.stop` | **Flutter: Stop App** | Terminate process |
+| `flutter.openDevToolsWebview` | **Flutter: Open DevTools** | Open in split pane |
+
+## Configuration
+
+Customize behavior in your `.lumide/settings.json` or Workspace Settings:
+
+| Key | Default | Description |
+|---|---|---|
+| `flutter.hotReloadOnSave` | `true` | Trigger hot reload when saving `.dart` files |
+| `flutter.clearLogOnHotRestart` | `true` | Clear the output channel when restarting |
+| `flutter.logEntryLimit` | `5000` | Max lines in the Flutter output channel |
+
+## Requirements
+
+- **Flutter SDK**: Must be installed and available in your system `PATH`.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+Built with ❤️ by [SoFluffy](https://sofluffy.io).
+
+## Happy Coding 🦊
