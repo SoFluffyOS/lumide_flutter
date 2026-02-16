@@ -1,7 +1,6 @@
 id: lumide_flutter
 name: 'Flutter'
 description: 'Flutter support for Lumide IDE'
-version: '1.0.0'
 entry_point: 'bin/main.dart'
 
 activation_events:
