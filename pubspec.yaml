@@ -4,6 +4,9 @@ version: 1.0.0
 homepage: https://lumide.dev
 repository: https://github.com/SoFluffyOS/lumide_flutter
 
+executables:
+  lumide_flutter: main
+
 environment:
   sdk: '>=3.0.0 <4.0.0'
 
