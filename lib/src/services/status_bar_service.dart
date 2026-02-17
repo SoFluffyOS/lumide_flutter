@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:lumide_api/lumide_api.dart';
 import 'package:lumide_flutter/src/constants.dart';
@@ -15,14 +16,39 @@ class StatusBarService {
     final scriptPath = Platform.script.toFilePath();
     final scriptDir = p.dirname(scriptPath);
 
-    String iconPath = p.normalize(
+    final paths = [
       p.join(scriptDir, '..', folderAssets, assetIconFlutterSolid),
-    );
+      p.join(scriptDir, folderAssets, assetIconFlutterSolid),
+      p.join(Directory.current.path, folderAssets, assetIconFlutterSolid),
+    ];
 
-    if (!await File(iconPath).exists()) {
-      iconPath = p.normalize(
-        p.join(scriptDir, folderAssets, assetIconFlutterSolid),
-      );
+    String? foundPath;
+
+    try {
+      final baseUri = Uri.parse('package:lumide_flutter/lumide_flutter.dart');
+      final resolvedBase = await Isolate.resolvePackageUri(baseUri);
+
+      if (resolvedBase != null && resolvedBase.isScheme('file')) {
+        final libDir = p.dirname(resolvedBase.toFilePath());
+        final packageRoot = p.dirname(libDir);
+        final assetPath = p.normalize(
+          p.join(packageRoot, folderAssets, assetIconFlutterSolid),
+        );
+
+        if (await File(assetPath).exists()) {
+          foundPath = assetPath;
+        }
+      }
+    } catch (_) {}
+
+    if (foundPath == null) {
+      for (final path in paths) {
+        final normalized = p.normalize(path);
+        if (await File(normalized).exists()) {
+          foundPath = normalized;
+          break;
+        }
+      }
     }
 
     await context.statusBar.createItem(
@@ -32,7 +58,7 @@ class StatusBarService {
       priority: 100,
       tooltip: 'Flutter Tools',
       command: cmdFlutterTools,
-      iconPath: await File(iconPath).exists() ? iconPath : null,
+      iconPath: foundPath,
     );
   }
 
