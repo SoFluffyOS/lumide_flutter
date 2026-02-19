@@ -1,3 +1,13 @@
+## 1.1.1 (2026-02-19)
+
+### 🐞 Bug Fixes
+
+*   Handle incorrect assets path mapping when running from a prebuilt executable.
+
+### 🧹 Refactors
+
+*   Remove redundant version field from the plugin manifest.
+
 ## 1.1.0 (2026-02-16)
 
 ### 🚀 New Features
