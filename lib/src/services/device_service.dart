@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'dart:io';
+import 'dart:io' as io;
 
 import 'package:lumide_api/lumide_api.dart';
 import 'package:lumide_flutter/src/constants.dart';
@@ -37,7 +37,7 @@ class DeviceService {
         await _updateToolbar();
       }
     } catch (e) {
-      stderr.writeln('Failed to list devices: $e');
+      io.stderr.writeln('Failed to list devices: $e');
     }
   }
 

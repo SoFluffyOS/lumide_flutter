@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:io' as io;
 
 import 'package:lumide_api/lumide_api.dart';
 import 'package:lumide_flutter/src/constants.dart';
@@ -73,9 +73,10 @@ class FlutterService {
     try {
       final result = await _runWithCwd(cmdParts, args, workingDir);
 
-      stderr.writeln('Command: $cmdParts ${args.join(' ')} (in $workingDir)');
-      stderr.writeln('Stdout: ${result.stdout}');
-      stderr.writeln('Stderr: ${result.stderr}');
+      io.stderr
+          .writeln('Command: $cmdParts ${args.join(' ')} (in $workingDir)');
+      io.stderr.writeln('Stdout: ${result.stdout}');
+      io.stderr.writeln('Stderr: ${result.stderr}');
 
       if (result.exitCode == 0) {
         await context.window.showMessage(
@@ -89,7 +90,7 @@ class FlutterService {
       await context.window.showMessage(
           'Failed to run ${cmdParts.join(' ')}: $e',
           type: MessageType.error);
-      stderr.writeln('Error: $e');
+      io.stderr.writeln('Error: $e');
     }
   }
 
@@ -238,12 +239,12 @@ class FlutterService {
         final cmd = await sdkManager.getFlutterCommand(project);
         final result = await _runWithCwd(cmd, ['pub', 'get'], project);
         if (result.exitCode != 0) {
-          stderr.writeln('Failed pub get in $project: ${result.stderr}');
+          io.stderr.writeln('Failed pub get in $project: ${result.stderr}');
           return false;
         }
         return true;
       } catch (e) {
-        stderr.writeln('Exception in $project: $e');
+        io.stderr.writeln('Exception in $project: $e');
         return false;
       }
     }));

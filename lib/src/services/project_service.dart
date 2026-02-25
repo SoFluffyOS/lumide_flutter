@@ -105,8 +105,4 @@ class ProjectService {
       // Not a directory or permission denied
     }
   }
-
-  Future<void> dispose() async {
-    // Clean up if needed
-  }
 }

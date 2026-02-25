@@ -35,8 +35,4 @@ class SdkManager {
     }
     return 'Unknown';
   }
-
-  Future<void> dispose() async {
-    // Clean up if needed
-  }
 }

@@ -216,7 +216,6 @@ class RunService {
     }
   }
 
-
   void _checkForDevToolsUrl(String data) {
     // Regex matches "The Flutter DevTools ... available at: http://..."
     final match = regexDevTools.firstMatch(data);

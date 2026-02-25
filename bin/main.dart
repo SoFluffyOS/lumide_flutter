@@ -148,7 +148,5 @@ class FlutterPlugin extends LumidePlugin {
     await deviceService.dispose();
     await statusBarService.dispose();
     await flutterService.dispose();
-    await sdkManager.dispose();
-    await projectService.dispose();
   }
 }
