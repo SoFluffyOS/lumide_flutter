@@ -20,10 +20,18 @@ class RunService {
   LumideOutputChannel? _buildChannel;
 
   Process? _process;
+  StreamSubscription<String>? _stdoutProcessSub;
+  StreamSubscription<String>? _stderrProcessSub;
   bool _isRunning = false;
   bool get isRunning => _isRunning;
 
   bool _isConnectingToVmService = false;
+
+  VmService? _vmService;
+  StreamSubscription? _stdoutSub;
+  StreamSubscription? _stderrSub;
+  StreamSubscription? _loggingSub;
+  String? _devToolsUrl;
 
   RunService(
       this.context, this.projectService, this.sdkManager, this.deviceService);
@@ -139,7 +147,6 @@ class RunService {
         executable,
         finalArgs,
         workingDirectory: root,
-        runInShell: true,
       );
 
       _isRunning = true;
@@ -147,7 +154,7 @@ class RunService {
 
       // Stream stdout (Build logs + VM Uri)
       if (_process case final proc?) {
-        proc.stdout.transform(utf8.decoder).listen((data) {
+        _stdoutProcessSub = proc.stdout.transform(utf8.decoder).listen((data) {
           _buildChannel?.append(data); // Default to build channel
 
           _checkForVmService(data);
@@ -155,10 +162,8 @@ class RunService {
         });
 
         // Stream stderr
-        proc.stderr.transform(utf8.decoder).listen((data) {
+        _stderrProcessSub = proc.stderr.transform(utf8.decoder).listen((data) {
           // Errors usually go to build channel during build, or run channel if running
-          // For simplicity, send to build channel if not connected yet?
-          // Or just send to both/active one.
           if (_vmService == null) {
             _buildChannel?.append('[ERR] $data');
           } else {
@@ -170,6 +175,11 @@ class RunService {
         proc.exitCode.then((code) async {
           _isRunning = false;
           _process = null;
+          _devToolsUrl = null;
+          await _stdoutProcessSub?.cancel();
+          _stdoutProcessSub = null;
+          await _stderrProcessSub?.cancel();
+          _stderrProcessSub = null;
           await _disconnectVmService();
           await _showRunControls(isRunning: false);
           await _logInfo('exited with code $code.', channel: _buildChannel);
@@ -186,11 +196,6 @@ class RunService {
       await _showRunControls(isRunning: false);
     }
   }
-
-  VmService? _vmService;
-  StreamSubscription? _stdoutSub;
-  StreamSubscription? _stderrSub;
-  StreamSubscription? _loggingSub;
 
   void _checkForVmService(String data) {
     // Regex matches "available at" or "listening on" followed by http/ws URI
@@ -211,7 +216,6 @@ class RunService {
     }
   }
 
-  String? _devToolsUrl;
 
   void _checkForDevToolsUrl(String data) {
     // Regex matches "The Flutter DevTools ... available at: http://..."
@@ -432,6 +436,25 @@ class RunService {
       await context.window.showMessage('Stopping app...');
       proc.stdin.write('q');
       proc.kill();
+
+      // Wait for the process to actually exit, with a timeout to avoid hanging.
+      await proc.exitCode.timeout(
+        const Duration(seconds: 5),
+        onTimeout: () {
+          // Force kill if it hasn't exited.
+          proc.kill(ProcessSignal.sigkill);
+          return -1;
+        },
+      );
+
+      await _stdoutProcessSub?.cancel();
+      _stdoutProcessSub = null;
+      await _stderrProcessSub?.cancel();
+      _stderrProcessSub = null;
+
+      _isRunning = false;
+      _process = null;
+      _devToolsUrl = null;
     }
   }
 
