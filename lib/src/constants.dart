@@ -49,3 +49,6 @@ final RegExp regexVmService =
     RegExp(r'(?:available at|listening on).*(http:|ws:)[^\s]+');
 final RegExp regexDevTools =
     RegExp(r'The Flutter DevTools.*available at: (http:[^\s]+)');
+final RegExp regexHotReload =
+    RegExp(r'Reloaded (\d+) of (\d+) libraries in (\d+)ms');
+final RegExp regexHotRestart = RegExp(r'Restarted application in ([\d,]+)ms');

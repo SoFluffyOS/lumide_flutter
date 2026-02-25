@@ -32,7 +32,8 @@ class FlutterPlugin extends LumidePlugin {
     // 3. Environment Check
     final hasSdk = await flutterService.checkSdk();
     if (!hasSdk) {
-      await context.window.showMessage('Flutter SDK not found in PATH.',
+      await context.window.showMessage(
+          'Flutter SDK not found. Make sure "flutter" is in your PATH.',
           type: MessageType.error);
       await statusBarService.updateVersion('Not Found');
       return;
@@ -65,7 +66,7 @@ class FlutterPlugin extends LumidePlugin {
     // 6. Initial Data Fetch
     await deviceService.refreshDevices();
 
-    await context.window.showMessage('Flutter plugin activated!');
+    await context.window.showMessage('Flutter plugin ready');
   }
 
   void _registerCommands(LumideContext context) {

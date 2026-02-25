@@ -111,22 +111,25 @@ class RunService {
 
   Future<void> run() async {
     if (_isRunning) {
-      await context.window.showMessage('App is already running. Stop it first.',
+      await context.window.showMessage(
+          'A Flutter app is already running. Stop it before starting a new one.',
           type: MessageType.warning);
       return;
     }
 
     final root = await projectService.getProjectRoot();
     if (root == null) {
-      await context.window.showMessage('No active Flutter project found.',
+      await context.window.showMessage(
+          'No Flutter project found. Open a project with a pubspec.yaml first.',
           type: MessageType.error);
       return;
     }
 
     final deviceId = deviceService.selectedDeviceId;
     if (deviceId == null) {
-      await context.window
-          .showMessage('No device selected.', type: MessageType.error);
+      await context.window.showMessage(
+          'No device selected. Use the device picker to choose one.',
+          type: MessageType.error);
       return;
     }
 
@@ -134,7 +137,7 @@ class RunService {
     final args = ['run', '-d', deviceId];
 
     try {
-      await context.window.showMessage('Starting Flutter app on $deviceId...');
+      await context.window.showMessage('Running on $deviceId');
       await _buildChannel?.show(); // SHow build channel initially
 
       String executable = flutterCmd.first;
@@ -155,10 +158,11 @@ class RunService {
       // Stream stdout (Build logs + VM Uri)
       if (_process case final proc?) {
         _stdoutProcessSub = proc.stdout.transform(utf8.decoder).listen((data) {
-          _buildChannel?.append(data); // Default to build channel
+          _buildChannel?.append(data);
 
           _checkForVmService(data);
           _checkForDevToolsUrl(data);
+          _checkForReloadStatus(data);
         });
 
         // Stream stderr
@@ -187,7 +191,7 @@ class RunService {
       }
     } catch (err) {
       await context.window.showMessage(
-        'Failed to start run: $err',
+        'Failed to launch: $err',
         type: MessageType.error,
       );
       await _logError('Run error: $err', err, _buildChannel);
@@ -224,8 +228,26 @@ class RunService {
       final url = match.group(1);
       if (url != null) {
         _devToolsUrl = url;
-        context.window.showMessage('DevTools is ready at $url');
+        context.window.showMessage('DevTools available at $url');
       }
+    }
+  }
+
+  void _checkForReloadStatus(String data) {
+    final reloadMatch = regexHotReload.firstMatch(data);
+    if (reloadMatch != null) {
+      final n = reloadMatch.group(1);
+      final m = reloadMatch.group(2);
+      final ms = reloadMatch.group(3);
+      context.window
+          .showMessage('Hot Reload completed ($n of $m libraries in ${ms}ms)');
+      return;
+    }
+
+    final restartMatch = regexHotRestart.firstMatch(data);
+    if (restartMatch != null) {
+      final ms = restartMatch.group(1);
+      context.window.showMessage('Hot Restart completed in ${ms}ms');
     }
   }
 
@@ -357,7 +379,6 @@ class RunService {
   Future<void> hotReload() async {
     if (!_isRunning || _process == null) return;
     if (_process case final proc?) {
-      await context.window.showMessage('Performing Hot Reload... 🔥');
       proc.stdin.write('r');
       await _logInfo('Hot Reload request sent.');
     }
@@ -366,8 +387,6 @@ class RunService {
   Future<void> hotRestart() async {
     if (!_isRunning || _process == null) return;
     if (_process case final proc?) {
-      await context.window.showMessage('Performing Hot Restart... 🔄');
-
       final shouldClear = await context.workspace
               .getConfiguration(confClearLogOnHotRestart) as bool? ??
           defaultClearLogOnHotRestart;
@@ -385,14 +404,14 @@ class RunService {
     if (!_isRunning || _process == null) return;
 
     if (_devToolsUrl != null) {
-      await context.window.showMessage('Opening DevTools...');
+      await context.window.showMessage('Opening DevTools in browser');
       await context.window.openUrl(_devToolsUrl!);
       return;
     }
 
     if (_process case final proc?) {
       await context.window.showMessage(
-        'Requesting DevTools URL... check output.',
+        'DevTools URL not available yet. Requesting from Flutter',
       );
       proc.stdin.write('v');
     }
@@ -413,7 +432,7 @@ class RunService {
 
     if (_process case final proc?) {
       await context.window.showMessage(
-        'DevTools URL not ready yet. Generating...',
+        'DevTools URL not ready yet — requesting from Flutter',
       );
       // Trigger generation if not ready, but we can't easily wait for it here without a completer.
       // For now, just send 'v' and let the user know to try again.
@@ -432,7 +451,7 @@ class RunService {
   Future<void> stop() async {
     if (!_isRunning || _process == null) return;
     if (_process case final proc?) {
-      await context.window.showMessage('Stopping app...');
+      await context.window.showMessage('Stopping Flutter app');
       proc.stdin.write('q');
       proc.kill();
 

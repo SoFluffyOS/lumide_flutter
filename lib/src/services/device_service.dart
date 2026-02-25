@@ -82,7 +82,7 @@ class DeviceService {
     if (selected != null) {
       final payload = selected.payload as String;
       if (payload == 'refresh') {
-        await context.window.showMessage('Refreshing devices...');
+        await context.window.showMessage('Scanning for connected devices');
         await refreshDevices();
         await selectDevice(position); // Re-open picker
       } else {

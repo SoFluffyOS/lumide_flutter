@@ -57,7 +57,8 @@ class FlutterService {
   Future<void> _runCommandInProject(List<String> args, String statusMsg) async {
     final root = await projectService.getProjectRoot();
     if (root == null) {
-      await context.window.showMessage('No active Flutter project found.',
+      await context.window.showMessage(
+          'No Flutter project found. Open a folder with a pubspec.yaml.',
           type: MessageType.error);
       return;
     }
@@ -79,17 +80,15 @@ class FlutterService {
       io.stderr.writeln('Stderr: ${result.stderr}');
 
       if (result.exitCode == 0) {
-        await context.window.showMessage(
-            '${cmdParts.last} ${args.first} finished successfully.');
+        await context.window.showMessage('${args.first} completed');
       } else {
         await context.window.showMessage(
-            '${cmdParts.last} ${args.first} failed. Check logs.',
+            '${args.first} failed (exit code ${result.exitCode}). Check Build Output.',
             type: MessageType.error);
       }
     } catch (e) {
-      await context.window.showMessage(
-          'Failed to run ${cmdParts.join(' ')}: $e',
-          type: MessageType.error);
+      await context.window
+          .showMessage('Command failed: $e', type: MessageType.error);
       io.stderr.writeln('Error: $e');
     }
   }
@@ -222,17 +221,18 @@ class FlutterService {
   }
 
   Future<void> pubGetAll() async {
-    await context.window.showMessage('Scanning for Flutter projects...');
+    await context.window.showMessage('Scanning workspace for Flutter projects');
     final projects = await projectService.findAllProjects();
 
     if (projects.isEmpty) {
-      await context.window
-          .showMessage('No Flutter projects found.', type: MessageType.warning);
+      await context.window.showMessage(
+          'No Flutter projects found in this workspace.',
+          type: MessageType.warning);
       return;
     }
 
     await context.window
-        .showMessage('Running "pub get" in ${projects.length} projects...');
+        .showMessage('Running pub get in ${projects.length} projects');
 
     final results = await Future.wait(projects.map((project) async {
       try {
@@ -254,12 +254,12 @@ class FlutterService {
 
     if (failCount == 0) {
       await context.window.showMessage(
-        'Successfully ran "pub get" in all $successCount projects.',
+        'Pub get completed in all $successCount projects',
         type: MessageType.info,
       );
     } else {
       await context.window.showMessage(
-        'Finished "pub get". Success: $successCount, Failed: $failCount. Check logs.',
+        'Pub get finished. $successCount succeeded, $failCount failed. Check logs.',
         type: MessageType.warning,
       );
     }
