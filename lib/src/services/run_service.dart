@@ -16,8 +16,7 @@ class RunService {
   final SdkManager sdkManager;
   final DeviceService deviceService;
 
-  LumideOutputChannel? _runChannel;
-  LumideOutputChannel? _buildChannel;
+  LumideOutputChannel? _channel;
 
   Process? _process;
   StreamSubscription<String>? _stdoutSub;
@@ -47,10 +46,8 @@ class RunService {
         await context.workspace.getConfiguration(confLogEntryLimit) as int? ??
             defaultLogEntryLimit;
 
-    _runChannel = await context.window
+    _channel = await context.window
         .createOutputChannel(channelFlutter, maxEntries: logLimit);
-    _buildChannel = await context.window
-        .createOutputChannel(channelBuildOutput, maxEntries: logLimit);
 
     _maxPendingLogs =
         await context.workspace.getConfiguration(confMaxPendingLogs) as int? ??
@@ -143,14 +140,16 @@ class RunService {
     final args = ['run', '--machine', '-d', deviceId];
 
     try {
-      await context.window.showMessage('Running on $deviceId');
-      await _buildChannel?.show();
+      await context.window.showMessage(
+        'Running on $deviceId using ${flutterCmd.join(' ')}',
+      );
+      await _channel?.clear();
+      await _channel?.show();
 
       final executable = flutterCmd.first;
       final finalArgs = [...flutterCmd.sublist(1), ...args];
 
-      await _logInfo('Launching $executable ${finalArgs.join(' ')}...',
-          channel: _buildChannel);
+      await _logInfo('Running: $executable ${finalArgs.join(' ')}');
 
       _activeAppId = null;
       _requestId = 0;
@@ -172,7 +171,7 @@ class RunService {
             .listen(_handleStdoutLine);
 
         _stderrSub = proc.stderr.transform(utf8.decoder).listen((data) {
-          _buildChannel?.append('[ERR] $data');
+          _channel?.append('[ERR] $data');
         });
 
         unawaited(proc.exitCode.then((code) async {
@@ -186,8 +185,7 @@ class RunService {
           _stderrSub = null;
           await _disconnectVmService();
           await _showRunControls(isRunning: false);
-          await _logInfo('Process exited with code $code.',
-              channel: _buildChannel);
+          await _logInfo('Process exited with code $code.');
         }));
       }
     } catch (err) {
@@ -195,7 +193,7 @@ class RunService {
         'Failed to launch: $err',
         type: MessageType.error,
       );
-      await _logError('Run error: $err', err, _buildChannel);
+      await _logError('Run error: $err', err);
       _isRunning = false;
       _process = null;
       _activeAppId = null;
@@ -207,7 +205,7 @@ class RunService {
     if (line.isEmpty) return;
 
     if (!line.startsWith('[')) {
-      _buildChannel?.append(line);
+      _channel?.append('$line\n');
       return;
     }
 
@@ -221,7 +219,7 @@ class RunService {
         }
       }
     } on FormatException {
-      _buildChannel?.append(line);
+      _channel?.append('$line\n');
     }
   }
 
@@ -232,7 +230,6 @@ class RunService {
     switch (eventName) {
       case 'app.start':
         _activeAppId = params['appId'] as String?;
-        _logInfo('App started (appId: $_activeAppId)', channel: _buildChannel);
 
       case 'app.debugPort':
         if (params['wsUri'] case final String wsUri) {
@@ -243,29 +240,28 @@ class RunService {
         }
 
       case 'app.started':
-        _logInfo('App is running.', channel: _buildChannel);
+        _logInfo('App is running.');
 
       case 'app.log':
         final log = params['log'] as String? ?? '';
         if (log.isNotEmpty) {
-          _buildChannel?.append(log);
+          _channel?.append('$log\n');
         }
 
       case 'app.progress':
         final message = params['message'] as String?;
         final finished = params['finished'] as bool? ?? false;
         if (message != null && !finished) {
-          _buildChannel?.append(message);
+          _channel?.append('$message\n');
         }
 
       case 'app.stop':
-        _logInfo('App stopped.', channel: _buildChannel);
         _activeAppId = null;
 
       case 'daemon.logMessage':
         final log = params['log'] as String? ?? '';
         if (log.isNotEmpty) {
-          _buildChannel?.append(log);
+          _channel?.append('$log\n');
         }
     }
   }
@@ -294,7 +290,6 @@ class RunService {
     _isConnectingToVmService = true;
 
     try {
-      await _runChannel?.show();
       await _logInfo('Connecting to VM Service at $wsUri...');
 
       final vmService = await vmServiceConnectUri(wsUri);
@@ -308,7 +303,7 @@ class RunService {
         _vmStdoutSub = service.onStdoutEvent.listen((event) {
           if (event.kind == EventKind.kWriteEvent) {
             if (event.bytes case final String bytes) {
-              _runChannel?.append(utf8.decode(base64Decode(bytes)));
+              _channel?.append(utf8.decode(base64Decode(bytes)));
             }
           }
         });
@@ -316,7 +311,7 @@ class RunService {
         _vmStderrSub = service.onStderrEvent.listen((event) {
           if (event.kind == EventKind.kWriteEvent) {
             if (event.bytes case final String bytes) {
-              _runChannel?.append(utf8.decode(base64Decode(bytes)));
+              _channel?.append(utf8.decode(base64Decode(bytes)));
             }
           }
         });
@@ -394,7 +389,7 @@ class RunService {
       },
     );
 
-    unawaited(_runChannel?.appendLog(record));
+    unawaited(_channel?.appendLog(record));
   }
 
   Future<String?> _getStringValue(InstanceRef? ref, String? isolateId) async {
@@ -440,7 +435,6 @@ class RunService {
       'app.restart',
       {'fullRestart': false, 'pause': false},
     );
-    await _logInfo('Hot Reload request sent.');
   }
 
   Future<void> hotRestart() async {
@@ -451,14 +445,13 @@ class RunService {
         defaultClearLogOnHotRestart;
 
     if (shouldClear) {
-      await _runChannel?.clear();
+      await _channel?.clear();
     }
 
     _sendMachineCommand(
       'app.restart',
       {'fullRestart': true, 'pause': false},
     );
-    await _logInfo('Hot Restart request sent.');
   }
 
   Future<void> openDevTools() async {
@@ -529,16 +522,11 @@ class RunService {
   Future<void> dispose() async {
     await stop();
     await _disconnectVmService();
-    await _runChannel?.dispose();
-    await _buildChannel?.dispose();
+    await _channel?.dispose();
   }
 
-  Future<void> _logInfo(
-    String message, {
-    LumideOutputChannel? channel,
-  }) async {
-    final target = channel ?? _runChannel;
-    await target?.appendLog(
+  Future<void> _logInfo(String message) async {
+    await _channel?.appendLog(
       LumideLogRecord(
         level: 'INFO',
         message: message,
@@ -548,13 +536,8 @@ class RunService {
     );
   }
 
-  Future<void> _logError(
-    String message, [
-    Object? error,
-    LumideOutputChannel? channel,
-  ]) async {
-    final target = channel ?? _runChannel;
-    await target?.appendLog(
+  Future<void> _logError(String message, [Object? error]) async {
+    await _channel?.appendLog(
       LumideLogRecord(
         level: 'ERROR',
         message: message,

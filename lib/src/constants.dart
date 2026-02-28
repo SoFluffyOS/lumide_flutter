@@ -29,7 +29,6 @@ const int defaultPressureThreshold = 10;
 
 // output channels
 const String channelFlutter = 'Flutter';
-const String channelBuildOutput = 'Build Output';
 
 // icons
 const String iconZap = 'zap';
