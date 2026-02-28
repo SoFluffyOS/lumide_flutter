@@ -31,6 +31,16 @@ configuration:
     default: 5000
     title: 'Log Entry Limit'
     description: 'Maximum number of log entries to keep in the output channels.'
+  - key: flutter.maxPendingLogs
+    type: number
+    default: 50
+    title: 'Max Pending Logs'
+    description: 'Maximum number of log events processed concurrently. Events beyond this limit are dropped to prevent flooding.'
+  - key: flutter.pressureThreshold
+    type: number
+    default: 10
+    title: 'Log Pressure Threshold'
+    description: 'When pending log count exceeds this, skip expensive VM lookups for faster processing.'
 
 contributes:
   commands:

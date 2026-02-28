@@ -17,11 +17,15 @@ const String cmdFlutterOpenDevToolsWebview = 'flutter.openDevToolsWebview';
 const String confLogEntryLimit = 'flutter.logEntryLimit';
 const String confHotReloadOnSave = 'flutter.hotReloadOnSave';
 const String confClearLogOnHotRestart = 'flutter.clearLogOnHotRestart';
+const String confMaxPendingLogs = 'flutter.maxPendingLogs';
+const String confPressureThreshold = 'flutter.pressureThreshold';
 
 // defaults
 const int defaultLogEntryLimit = 5000;
 const bool defaultHotReloadOnSave = true;
 const bool defaultClearLogOnHotRestart = true;
+const int defaultMaxPendingLogs = 50;
+const int defaultPressureThreshold = 10;
 
 // output channels
 const String channelFlutter = 'Flutter';

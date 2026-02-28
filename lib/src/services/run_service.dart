@@ -35,6 +35,9 @@ class RunService {
 
   String? _activeAppId;
   int _requestId = 0;
+  int _pendingLogCount = 0;
+  int _maxPendingLogs = defaultMaxPendingLogs;
+  int _pressureThreshold = defaultPressureThreshold;
 
   RunService(
       this.context, this.projectService, this.sdkManager, this.deviceService);
@@ -48,6 +51,13 @@ class RunService {
         .createOutputChannel(channelFlutter, maxEntries: logLimit);
     _buildChannel = await context.window
         .createOutputChannel(channelBuildOutput, maxEntries: logLimit);
+
+    _maxPendingLogs =
+        await context.workspace.getConfiguration(confMaxPendingLogs) as int? ??
+            defaultMaxPendingLogs;
+    _pressureThreshold = await context.workspace
+            .getConfiguration(confPressureThreshold) as int? ??
+        defaultPressureThreshold;
 
     await _showRunControls(isRunning: false);
 
@@ -321,34 +331,19 @@ class RunService {
           }
         });
 
-        _vmLoggingSub = service.onLoggingEvent.listen((event) async {
+        _vmLoggingSub = service.onLoggingEvent.listen((event) {
           final logRecord = event.logRecord;
           if (logRecord == null) return;
 
-          final level = logRecord.level != null
-              ? _getLogLevelName(logRecord.level!)
-              : 'LOG';
-          final message = logRecord.message?.valueAsString ?? '';
+          if (_pendingLogCount >= _maxPendingLogs) return;
+          _pendingLogCount++;
 
-          final isolateId = event.isolate?.id;
-          final error = await _getStringValue(logRecord.error, isolateId);
-          final stack = await _getStringValue(logRecord.stackTrace, isolateId);
+          final underPressure = _pendingLogCount > _pressureThreshold;
 
-          final finalLevel =
-              (error != null && error.isNotEmpty) ? 'ERROR' : level;
-
-          final record = LumideLogRecord(
-            level: finalLevel,
-            message: message,
-            name: logRecord.loggerName?.valueAsString,
-            error: error,
-            stackTrace: stack,
-            time: logRecord.time != null
-                ? DateTime.fromMillisecondsSinceEpoch(logRecord.time!)
-                : null,
-          );
-
-          unawaited(_runChannel?.appendLog(record));
+          unawaited(_processLogRecord(event, logRecord, underPressure)
+              .whenComplete(() {
+            _pendingLogCount--;
+          }));
         });
 
         await _logInfo('Connected to VM Service. Logs streaming...');
@@ -367,6 +362,43 @@ class RunService {
     if (level >= 700) return 'CONFIG';
     if (level >= 500) return 'FINE';
     return 'DEBUG';
+  }
+
+  Future<void> _processLogRecord(
+    Event event,
+    LogRecord logRecord,
+    bool underPressure,
+  ) async {
+    final level =
+        logRecord.level != null ? _getLogLevelName(logRecord.level!) : 'LOG';
+    final message = logRecord.message?.valueAsString ?? '';
+
+    String? error;
+    String? stack;
+
+    if (underPressure) {
+      error = logRecord.error?.valueAsString;
+      stack = logRecord.stackTrace?.valueAsString;
+    } else {
+      final isolateId = event.isolate?.id;
+      error = await _getStringValue(logRecord.error, isolateId);
+      stack = await _getStringValue(logRecord.stackTrace, isolateId);
+    }
+
+    final finalLevel = (error != null && error.isNotEmpty) ? 'ERROR' : level;
+
+    final record = LumideLogRecord(
+      level: finalLevel,
+      message: message,
+      name: logRecord.loggerName?.valueAsString,
+      error: error,
+      stackTrace: stack,
+      time: logRecord.time != null
+          ? DateTime.fromMillisecondsSinceEpoch(logRecord.time!)
+          : null,
+    );
+
+    unawaited(_runChannel?.appendLog(record));
   }
 
   Future<String?> _getStringValue(InstanceRef? ref, String? isolateId) async {
