@@ -112,7 +112,9 @@ class ProjectService {
       final absolutePath = parsed.toRealPath();
 
       // Skip cache/build directories
-      if (absolutePath.contains('.dart_tool/') || absolutePath.contains('build/') || absolutePath.contains('.git/')) {
+      if (absolutePath.contains('.dart_tool/') ||
+          absolutePath.contains('build/') ||
+          absolutePath.contains('.git/')) {
         continue;
       }
 

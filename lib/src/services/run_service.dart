@@ -41,8 +41,8 @@ class RunService {
   int _pendingLogCount = 0;
   int _maxPendingLogs = defaultMaxPendingLogs;
   int _pressureThreshold = defaultPressureThreshold;
-  RunService(
-      this.context, this.projectService, this.sdkManager, this.deviceService, this.targetService);
+  RunService(this.context, this.projectService, this.sdkManager,
+      this.deviceService, this.targetService);
 
   Future<void> init() async {
     final logLimit =
@@ -143,11 +143,11 @@ class RunService {
 
     final flutterCmd = await sdkManager.getFlutterCommand(root);
     final args = ['run', '--machine', '-d', deviceId];
-    
+
     String workingDirectory = root;
     if (targetService.selectedTarget != null) {
       final targetAbsolute = targetService.selectedTarget!;
-      
+
       // Determine the nearest package root by searching upwards for pubspec.yaml
       String packageRoot = path.dirname(targetAbsolute);
       while (packageRoot != root && packageRoot.length >= root.length) {
@@ -157,11 +157,11 @@ class RunService {
         }
         packageRoot = path.dirname(packageRoot);
       }
-      
+
       if (packageRoot.length < root.length) {
         packageRoot = root;
       }
-      
+
       workingDirectory = packageRoot;
       final relativeTarget = path.relative(targetAbsolute, from: packageRoot);
       args.addAll(['-t', relativeTarget]);
@@ -177,7 +177,8 @@ class RunService {
       final executable = flutterCmd.first;
       final finalArgs = [...flutterCmd.sublist(1), ...args];
 
-      await _logInfo('Running: $executable ${finalArgs.join(' ')}\nWorking Directory: $workingDirectory');
+      await _logInfo(
+          'Running: $executable ${finalArgs.join(' ')}\nWorking Directory: $workingDirectory');
 
       _activeAppId = null;
       _requestId = 0;

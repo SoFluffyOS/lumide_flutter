@@ -24,7 +24,8 @@ class FlutterPlugin extends LumidePlugin {
     flutterService = FlutterService(context, projectService, sdkManager);
     deviceService = DeviceService(context, statusBarService, sdkManager);
     targetService = TargetService(context, projectService);
-    runService = RunService(context, projectService, sdkManager, deviceService, targetService);
+    runService = RunService(
+        context, projectService, sdkManager, deviceService, targetService);
 
     // Inject RunService into FlutterService (break circular dependency)
     flutterService.setRunService(runService);

@@ -72,7 +72,8 @@ class TargetService {
     await _updateToolbar();
   }
 
-  Future<void> selectTarget([Map<String, int>? position, bool forceRefresh = false]) async {
+  Future<void> selectTarget(
+      [Map<String, int>? position, bool forceRefresh = false]) async {
     final items = <QuickPickItem>[];
     String? root;
 
@@ -81,12 +82,13 @@ class TargetService {
     } catch (_) {}
 
     if (root != null) {
-      final mainDartFiles = await projectService.findAllTargets(forceRefresh: forceRefresh);
+      final mainDartFiles =
+          await projectService.findAllTargets(forceRefresh: forceRefresh);
 
       for (final absolutePath in mainDartFiles) {
         final rel = path.relative(absolutePath, from: root);
         String packageName = '';
-        
+
         // Find nearest pubspec.yaml to extract package name directory
         var curr = path.dirname(absolutePath);
         while (curr != root && curr.length >= root.length) {
@@ -114,7 +116,6 @@ class TargetService {
       if (_selectedTarget != null) {
         final rel = path.relative(_selectedTarget!, from: root);
         if (!items.any((i) => i.payload == _selectedTarget)) {
-          
           String packageName = '';
           var curr = path.dirname(_selectedTarget!);
           while (curr != root && curr.length >= root.length) {
@@ -125,7 +126,7 @@ class TargetService {
             }
             curr = path.dirname(curr);
           }
-          
+
           if (packageName.isEmpty) {
             packageName = path.basename(root);
           }
@@ -169,7 +170,8 @@ class TargetService {
         return;
       } else if (payload == 'custom') {
         final customPath = await context.window.showInputBox(
-          prompt: 'Enter relative path to Dart entry point (e.g. lib/main.dart)',
+          prompt:
+              'Enter relative path to Dart entry point (e.g. lib/main.dart)',
         );
         if (customPath != null && customPath.isNotEmpty) {
           if (root != null) {
