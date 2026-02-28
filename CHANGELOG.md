@@ -1,3 +1,17 @@
+## 1.2.0 (2026-02-28)
+
+### 🚀 New Features
+
+*   **Target Picker UI**:
+    *   Dynamically scan `**/main.dart` entry points across monorepos and inject them directly into a top-bar Quick Pick interface.
+    *   Target paths are processed seamlessly into `flutter run --machine -d <device> -t <relative-lib/main.dart>`.
+    *   Automatically resolves the parent package directory and switches `workingDirectory` context to handle deeply nested plugins properly.
+    *   Support manual override inputs to inject custom entry points.
+*   **Monorepo Support**:
+    *   Enforce Workspace rules to prevent unbounded SDK scoping errors on nested monorepo dependencies.
+*   **Under The Hood**:
+    *   Migrate `lumide_flutter` onto `lumide_api` `v0.9.0` supporting rich `tooltip` item payloads.
+
 ## 1.1.1 (2026-02-19)
 
 ### 🐞 Bug Fixes
