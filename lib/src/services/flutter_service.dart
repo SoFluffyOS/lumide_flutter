@@ -233,7 +233,7 @@ class FlutterService {
 
     final validProjects = <String>[];
     for (final project in projects) {
-      if (project.contains('.dart_tool')) continue;
+      if (path.split(project).contains('.dart_tool')) continue;
       try {
         final pubspecString =
             await context.fs.readString(path.join(project, 'pubspec.yaml'));
