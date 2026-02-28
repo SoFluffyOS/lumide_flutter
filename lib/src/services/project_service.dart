@@ -111,11 +111,9 @@ class ProjectService {
       final parsed = Uri.parse(uri);
       final absolutePath = parsed.toRealPath();
 
-      // Skip cache/build directories
+      // Skip cache/build/hidden directories
       final parts = path.split(absolutePath);
-      if (parts.contains('.dart_tool') ||
-          parts.contains('build') ||
-          parts.contains('.git')) {
+      if (parts.any((part) => part.startsWith('.') || part == 'build')) {
         continue;
       }
 
