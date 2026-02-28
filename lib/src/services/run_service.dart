@@ -20,48 +20,45 @@ class RunService {
   LumideOutputChannel? _buildChannel;
 
   Process? _process;
-  StreamSubscription<String>? _stdoutProcessSub;
-  StreamSubscription<String>? _stderrProcessSub;
+  StreamSubscription<String>? _stdoutSub;
+  StreamSubscription<String>? _stderrSub;
   bool _isRunning = false;
   bool get isRunning => _isRunning;
 
   bool _isConnectingToVmService = false;
 
   VmService? _vmService;
-  StreamSubscription? _stdoutSub;
-  StreamSubscription? _stderrSub;
-  StreamSubscription? _loggingSub;
+  StreamSubscription? _vmStdoutSub;
+  StreamSubscription? _vmStderrSub;
+  StreamSubscription? _vmLoggingSub;
   String? _devToolsUrl;
+
+  String? _activeAppId;
+  int _requestId = 0;
 
   RunService(
       this.context, this.projectService, this.sdkManager, this.deviceService);
 
   Future<void> init() async {
-    // Read configuration
     final logLimit =
         await context.workspace.getConfiguration(confLogEntryLimit) as int? ??
             defaultLogEntryLimit;
 
-    // Create output channels
     _runChannel = await context.window
         .createOutputChannel(channelFlutter, maxEntries: logLimit);
     _buildChannel = await context.window
         .createOutputChannel(channelBuildOutput, maxEntries: logLimit);
 
-    // Register initial Toolbar items
     await _showRunControls(isRunning: false);
 
-    // Auto-reload on save
     context.workspace.onDidSaveTextDocument((uri) async {
-      if (_isRunning && _process != null) {
-        if (uri.endsWith('.dart')) {
-          final shouldReload = await context.workspace
-                  .getConfiguration(confHotReloadOnSave) as bool? ??
-              defaultHotReloadOnSave;
+      if (_isRunning && _activeAppId != null && uri.endsWith('.dart')) {
+        final shouldReload = await context.workspace
+                .getConfiguration(confHotReloadOnSave) as bool? ??
+            defaultHotReloadOnSave;
 
-          if (shouldReload) {
-            await hotReload();
-          }
+        if (shouldReload) {
+          await hotReload();
         }
       }
     });
@@ -69,7 +66,6 @@ class RunService {
 
   Future<void> _showRunControls({required bool isRunning}) async {
     if (isRunning) {
-      // Hide Run, Show Stop/Reload/Restart
       await context.toolbar.unregisterItem(cmdFlutterRun);
 
       await context.toolbar.registerItem(
@@ -94,7 +90,6 @@ class RunService {
         priority: 98,
       );
     } else {
-      // Show Run, Hide others
       await context.toolbar.unregisterItem(cmdFlutterStop);
       await context.toolbar.unregisterItem(cmdFlutterHotReload);
       await context.toolbar.unregisterItem(cmdFlutterHotRestart);
@@ -108,6 +103,10 @@ class RunService {
       );
     }
   }
+
+  // ---------------------------------------------------------------------------
+  // Run
+  // ---------------------------------------------------------------------------
 
   Future<void> run() async {
     if (_isRunning) {
@@ -134,17 +133,21 @@ class RunService {
     }
 
     final flutterCmd = await sdkManager.getFlutterCommand(root);
-    final args = ['run', '-d', deviceId];
+    final args = ['run', '--machine', '-d', deviceId];
 
     try {
       await context.window.showMessage('Running on $deviceId');
-      await _buildChannel?.show(); // SHow build channel initially
+      await _buildChannel?.show();
 
-      String executable = flutterCmd.first;
-      List<String> finalArgs = [...flutterCmd.sublist(1), ...args];
+      final executable = flutterCmd.first;
+      final finalArgs = [...flutterCmd.sublist(1), ...args];
 
       await _logInfo('Launching $executable ${finalArgs.join(' ')}...',
           channel: _buildChannel);
+
+      _activeAppId = null;
+      _requestId = 0;
+      _devToolsUrl = null;
 
       _process = await Process.start(
         executable,
@@ -155,39 +158,30 @@ class RunService {
       _isRunning = true;
       await _showRunControls(isRunning: true);
 
-      // Stream stdout (Build logs + VM Uri)
       if (_process case final proc?) {
-        _stdoutProcessSub = proc.stdout.transform(utf8.decoder).listen((data) {
-          _buildChannel?.append(data);
+        _stdoutSub = proc.stdout
+            .transform(utf8.decoder)
+            .transform(const LineSplitter())
+            .listen(_handleStdoutLine);
 
-          _checkForVmService(data);
-          _checkForDevToolsUrl(data);
-          _checkForReloadStatus(data);
+        _stderrSub = proc.stderr.transform(utf8.decoder).listen((data) {
+          _buildChannel?.append('[ERR] $data');
         });
 
-        // Stream stderr
-        _stderrProcessSub = proc.stderr.transform(utf8.decoder).listen((data) {
-          // Errors usually go to build channel during build, or run channel if running
-          if (_vmService == null) {
-            _buildChannel?.append('[ERR] $data');
-          } else {
-            _runChannel?.append('[ERR] $data');
-          }
-        });
-
-        // ignore: unawaited_futures
-        proc.exitCode.then((code) async {
+        unawaited(proc.exitCode.then((code) async {
           _isRunning = false;
           _process = null;
+          _activeAppId = null;
           _devToolsUrl = null;
-          await _stdoutProcessSub?.cancel();
-          _stdoutProcessSub = null;
-          await _stderrProcessSub?.cancel();
-          _stderrProcessSub = null;
+          await _stdoutSub?.cancel();
+          _stdoutSub = null;
+          await _stderrSub?.cancel();
+          _stderrSub = null;
           await _disconnectVmService();
           await _showRunControls(isRunning: false);
-          await _logInfo('exited with code $code.', channel: _buildChannel);
-        });
+          await _logInfo('Process exited with code $code.',
+              channel: _buildChannel);
+        }));
       }
     } catch (err) {
       await context.window.showMessage(
@@ -197,66 +191,114 @@ class RunService {
       await _logError('Run error: $err', err, _buildChannel);
       _isRunning = false;
       _process = null;
+      _activeAppId = null;
       await _showRunControls(isRunning: false);
     }
   }
 
-  void _checkForVmService(String data) {
-    // Regex matches "available at" or "listening on" followed by http/ws URI
-    final match = regexVmService.firstMatch(data);
+  // ---------------------------------------------------------------------------
+  // Machine protocol event handling
+  // ---------------------------------------------------------------------------
 
-    if (match != null && match.group(0) is String) {
-      String uriStr = match.group(0)!.split(' ').last;
+  void _handleStdoutLine(String line) {
+    if (line.isEmpty) return;
 
-      if (uriStr.startsWith('http')) {
-        uriStr = uriStr.replaceFirst('http', 'ws');
-        if (uriStr.endsWith('/')) {
-          uriStr += 'ws';
-        } else {
-          uriStr += '/ws';
-        }
-      }
-      _connectToVmService(uriStr);
-    }
-  }
-
-  void _checkForDevToolsUrl(String data) {
-    // Regex matches "The Flutter DevTools ... available at: http://..."
-    final match = regexDevTools.firstMatch(data);
-
-    if (match != null) {
-      final url = match.group(1);
-      if (url != null) {
-        _devToolsUrl = url;
-        context.window.showMessage('DevTools available at $url');
-      }
-    }
-  }
-
-  void _checkForReloadStatus(String data) {
-    final reloadMatch = regexHotReload.firstMatch(data);
-    if (reloadMatch != null) {
-      final n = reloadMatch.group(1);
-      final m = reloadMatch.group(2);
-      final ms = reloadMatch.group(3);
-      context.window
-          .showMessage('Hot Reload completed ($n of $m libraries in ${ms}ms)');
+    // The --machine protocol emits JSON arrays on stdout, one per line.
+    // Non-JSON lines (e.g. Gradle output) are forwarded to the build channel.
+    if (!line.startsWith('[')) {
+      _buildChannel?.append(line);
       return;
     }
 
-    final restartMatch = regexHotRestart.firstMatch(data);
-    if (restartMatch != null) {
-      final ms = restartMatch.group(1);
-      context.window.showMessage('Hot Restart completed in ${ms}ms');
+    try {
+      final decoded = jsonDecode(line);
+      if (decoded is List) {
+        for (final item in decoded) {
+          if (item is Map<String, dynamic>) {
+            _handleMachineEvent(item);
+          }
+        }
+      }
+    } on FormatException {
+      _buildChannel?.append(line);
     }
   }
+
+  void _handleMachineEvent(Map<String, dynamic> event) {
+    final eventName = event['event'] as String?;
+    final params = event['params'] as Map<String, dynamic>? ?? {};
+
+    switch (eventName) {
+      case 'app.start':
+        _activeAppId = params['appId'] as String?;
+        _logInfo('App started (appId: $_activeAppId)', channel: _buildChannel);
+
+      case 'app.debugPort':
+        final wsUri = params['wsUri'] as String?;
+        if (wsUri != null) {
+          _connectToVmService(wsUri);
+        }
+        final baseUri = params['baseUri'] as String?;
+        if (baseUri != null) {
+          _devToolsUrl = baseUri;
+        }
+
+      case 'app.started':
+        _logInfo('App is running.', channel: _buildChannel);
+
+      case 'app.log':
+        final log = params['log'] as String? ?? '';
+        if (log.isNotEmpty) {
+          _buildChannel?.append(log);
+        }
+
+      case 'app.progress':
+        final message = params['message'] as String?;
+        final finished = params['finished'] as bool? ?? false;
+        if (message != null && !finished) {
+          _buildChannel?.append(message);
+        }
+
+      case 'app.stop':
+        _logInfo('App stopped.', channel: _buildChannel);
+        _activeAppId = null;
+
+      case 'daemon.logMessage':
+        final log = params['log'] as String? ?? '';
+        if (log.isNotEmpty) {
+          _buildChannel?.append(log);
+        }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Machine protocol command dispatch
+  // ---------------------------------------------------------------------------
+
+  void _sendMachineCommand(String method, [Map<String, dynamic>? extraParams]) {
+    if (_process == null || _activeAppId == null) return;
+
+    final params = <String, dynamic>{'appId': _activeAppId!};
+    if (extraParams != null) {
+      params.addAll(extraParams);
+    }
+
+    final payload = [
+      {'id': ++_requestId, 'method': method, 'params': params}
+    ];
+    _process!.stdin.writeln(jsonEncode(payload));
+  }
+
+  // ---------------------------------------------------------------------------
+  // VM Service
+  // ---------------------------------------------------------------------------
 
   Future<void> _connectToVmService(String wsUri) async {
     if (_vmService != null || _isConnectingToVmService) return;
     _isConnectingToVmService = true;
 
     try {
-      await _runChannel?.show(); // Switch to run channel
+      await _runChannel?.show();
       await _logInfo('Connecting to VM Service at $wsUri...');
 
       final vmService = await vmServiceConnectUri(wsUri);
@@ -267,60 +309,46 @@ class RunService {
         await service.streamListen(EventStreams.kStderr);
         await service.streamListen(EventStreams.kLogging);
 
-        _stdoutSub = service.onStdoutEvent.listen((event) {
+        _vmStdoutSub = service.onStdoutEvent.listen((event) {
           if (event.kind == EventKind.kWriteEvent && event.bytes != null) {
-            final bytes = base64Decode(event.bytes!);
-            final str = utf8.decode(bytes);
-            _runChannel?.append(str);
+            _runChannel?.append(utf8.decode(base64Decode(event.bytes!)));
           }
         });
 
-        _stderrSub = service.onStderrEvent.listen((event) {
+        _vmStderrSub = service.onStderrEvent.listen((event) {
           if (event.kind == EventKind.kWriteEvent && event.bytes != null) {
-            final bytes = base64Decode(event.bytes!);
-            final str = utf8.decode(bytes);
-            _runChannel?.append(str);
+            _runChannel?.append(utf8.decode(base64Decode(event.bytes!)));
           }
         });
 
-        _loggingSub = service.onLoggingEvent.listen((event) async {
+        _vmLoggingSub = service.onLoggingEvent.listen((event) async {
           final logRecord = event.logRecord;
-          if (logRecord != null) {
-            final level = logRecord.level != null
-                ? _getLogLevelName(logRecord.level!)
-                : 'LOG';
-            final message = logRecord.message?.valueAsString ?? '';
+          if (logRecord == null) return;
 
-            // Fetch validation string for error and stackTrace if needed
-            final isolateId = event.isolate?.id;
-            final error = await _getStringValue(logRecord.error, isolateId);
-            final stack =
-                await _getStringValue(logRecord.stackTrace, isolateId);
+          final level = logRecord.level != null
+              ? _getLogLevelName(logRecord.level!)
+              : 'LOG';
+          final message = logRecord.message?.valueAsString ?? '';
 
-            // Inherit level or default to LOG
-            String finalLevel = level;
+          final isolateId = event.isolate?.id;
+          final error = await _getStringValue(logRecord.error, isolateId);
+          final stack = await _getStringValue(logRecord.stackTrace, isolateId);
 
-            // If there is an error, treat it as an ERROR level log if it's not already worse
-            if (error != null && error.isNotEmpty) {
-              finalLevel = 'ERROR';
-            }
+          final finalLevel =
+              (error != null && error.isNotEmpty) ? 'ERROR' : level;
 
-            final name = logRecord.loggerName?.valueAsString;
-            final time = logRecord.time != null
+          final record = LumideLogRecord(
+            level: finalLevel,
+            message: message,
+            name: logRecord.loggerName?.valueAsString,
+            error: error,
+            stackTrace: stack,
+            time: logRecord.time != null
                 ? DateTime.fromMillisecondsSinceEpoch(logRecord.time!)
-                : null;
+                : null,
+          );
 
-            final record = LumideLogRecord(
-              level: finalLevel,
-              message: message,
-              name: name,
-              error: error,
-              stackTrace: stack,
-              time: time,
-            );
-
-            unawaited(_runChannel?.appendLog(record));
-          }
+          unawaited(_runChannel?.appendLog(record));
         });
 
         await _logInfo('Connected to VM Service. Logs streaming...');
@@ -345,7 +373,6 @@ class RunService {
     if (ref == null) return null;
     if (ref.kind == InstanceKind.kNull) return null;
     if (ref.valueAsString == 'null') return null;
-
     if (ref.valueAsString != null) return ref.valueAsString;
 
     if (_vmService != null && ref.id != null && isolateId != null) {
@@ -357,7 +384,6 @@ class RunService {
           [],
           disableBreakpoints: true,
         );
-
         if (result is InstanceRef) {
           return result.valueAsString;
         }
@@ -369,39 +395,43 @@ class RunService {
   }
 
   Future<void> _disconnectVmService() async {
-    await _stdoutSub?.cancel();
-    await _stderrSub?.cancel();
-    await _loggingSub?.cancel();
+    await _vmStdoutSub?.cancel();
+    _vmStdoutSub = null;
+    await _vmStderrSub?.cancel();
+    _vmStderrSub = null;
+    await _vmLoggingSub?.cancel();
+    _vmLoggingSub = null;
     await _vmService?.dispose();
     _vmService = null;
   }
 
+  // ---------------------------------------------------------------------------
+  // Hot Reload / Restart / Stop
+  // ---------------------------------------------------------------------------
+
   Future<void> hotReload() async {
-    if (!_isRunning || _process == null) return;
-    if (_process case final proc?) {
-      proc.stdin.write('r');
-      await _logInfo('Hot Reload request sent.');
-    }
+    if (!_isRunning || _activeAppId == null) return;
+    _sendMachineCommand('app.restart', {'fullRestart': false, 'pause': false});
+    await _logInfo('Hot Reload request sent.');
   }
 
   Future<void> hotRestart() async {
-    if (!_isRunning || _process == null) return;
-    if (_process case final proc?) {
-      final shouldClear = await context.workspace
-              .getConfiguration(confClearLogOnHotRestart) as bool? ??
-          defaultClearLogOnHotRestart;
+    if (!_isRunning || _activeAppId == null) return;
 
-      if (shouldClear) {
-        await _runChannel?.clear();
-      }
+    final shouldClear = await context.workspace
+            .getConfiguration(confClearLogOnHotRestart) as bool? ??
+        defaultClearLogOnHotRestart;
 
-      proc.stdin.write('R');
-      await _logInfo('Hot Restart request sent.');
+    if (shouldClear) {
+      await _runChannel?.clear();
     }
+
+    _sendMachineCommand('app.restart', {'fullRestart': true, 'pause': false});
+    await _logInfo('Hot Restart request sent.');
   }
 
   Future<void> openDevTools() async {
-    if (!_isRunning || _process == null) return;
+    if (!_isRunning) return;
 
     if (_devToolsUrl != null) {
       await context.window.showMessage('Opening DevTools in browser');
@@ -409,19 +439,17 @@ class RunService {
       return;
     }
 
-    if (_process case final proc?) {
-      await context.window.showMessage(
-        'DevTools URL not available yet. Requesting from Flutter',
-      );
-      proc.stdin.write('v');
-    }
+    _sendMachineCommand('app.callServiceExtension',
+        {'methodName': 'ext.flutter.activeDevToolsServerAddress'});
+    await context.window.showMessage(
+      'DevTools URL not available yet. Try again shortly.',
+    );
   }
 
   Future<void> openDevToolsInWebview() async {
-    if (!_isRunning || _process == null) return;
+    if (!_isRunning) return;
 
     if (_devToolsUrl != null) {
-      // Create webview panel
       await context.window.createWebviewPanel(
         'flutter.devtools',
         'Flutter DevTools',
@@ -430,51 +458,44 @@ class RunService {
       return;
     }
 
-    if (_process case final proc?) {
-      await context.window.showMessage(
-        'DevTools URL not ready yet — requesting from Flutter',
-      );
-      // Trigger generation if not ready, but we can't easily wait for it here without a completer.
-      // For now, just send 'v' and let the user know to try again.
-      // Ideally we'd use a Completer checking `_devToolsUrl`.
-      proc.stdin.write('v');
-    }
-  }
-
-  Future<void> sendStdin(String char) async {
-    if (!_isRunning || _process == null) return;
-    if (_process case final proc?) {
-      proc.stdin.write(char);
-    }
+    await context.window.showMessage(
+      'DevTools URL not ready yet. Try again shortly.',
+    );
   }
 
   Future<void> stop() async {
     if (!_isRunning || _process == null) return;
-    if (_process case final proc?) {
-      await context.window.showMessage('Stopping Flutter app');
-      proc.stdin.write('q');
-      proc.kill();
 
-      // Wait for the process to actually exit, with a timeout to avoid hanging.
+    await context.window.showMessage('Stopping Flutter app');
+
+    if (_activeAppId != null) {
+      _sendMachineCommand('app.stop');
+    }
+
+    if (_process case final proc?) {
       await proc.exitCode.timeout(
         const Duration(seconds: 5),
         onTimeout: () {
-          // Force kill if it hasn't exited.
           proc.kill(ProcessSignal.sigkill);
           return -1;
         },
       );
-
-      await _stdoutProcessSub?.cancel();
-      _stdoutProcessSub = null;
-      await _stderrProcessSub?.cancel();
-      _stderrProcessSub = null;
-
-      _isRunning = false;
-      _process = null;
-      _devToolsUrl = null;
     }
+
+    await _stdoutSub?.cancel();
+    _stdoutSub = null;
+    await _stderrSub?.cancel();
+    _stderrSub = null;
+
+    _isRunning = false;
+    _process = null;
+    _activeAppId = null;
+    _devToolsUrl = null;
   }
+
+  // ---------------------------------------------------------------------------
+  // Lifecycle
+  // ---------------------------------------------------------------------------
 
   Future<void> dispose() async {
     await stop();
@@ -482,6 +503,10 @@ class RunService {
     await _runChannel?.dispose();
     await _buildChannel?.dispose();
   }
+
+  // ---------------------------------------------------------------------------
+  // Logging helpers
+  // ---------------------------------------------------------------------------
 
   Future<void> _logInfo(String message, {LumideOutputChannel? channel}) async {
     final target = channel ?? _runChannel;
