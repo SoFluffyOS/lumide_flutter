@@ -7,6 +7,8 @@ import 'package:lumide_flutter/src/constants.dart';
 import 'package:lumide_flutter/src/services/device_service.dart';
 import 'package:lumide_flutter/src/services/project_service.dart';
 import 'package:lumide_flutter/src/services/sdk_manager.dart';
+import 'package:lumide_flutter/src/services/target_service.dart';
+import 'package:path/path.dart' as path;
 import 'package:vm_service/vm_service.dart';
 import 'package:vm_service/vm_service_io.dart';
 
@@ -15,6 +17,7 @@ class RunService {
   final ProjectService projectService;
   final SdkManager sdkManager;
   final DeviceService deviceService;
+  final TargetService targetService;
 
   LumideOutputChannel? _channel;
   LumideOutputChannel? get channel => _channel;
@@ -38,9 +41,8 @@ class RunService {
   int _pendingLogCount = 0;
   int _maxPendingLogs = defaultMaxPendingLogs;
   int _pressureThreshold = defaultPressureThreshold;
-
   RunService(
-      this.context, this.projectService, this.sdkManager, this.deviceService);
+      this.context, this.projectService, this.sdkManager, this.deviceService, this.targetService);
 
   Future<void> init() async {
     final logLimit =
@@ -141,7 +143,29 @@ class RunService {
 
     final flutterCmd = await sdkManager.getFlutterCommand(root);
     final args = ['run', '--machine', '-d', deviceId];
-
+    
+    String workingDirectory = root;
+    if (targetService.selectedTarget != null) {
+      final targetAbsolute = targetService.selectedTarget!;
+      
+      // Determine the nearest package root by searching upwards for pubspec.yaml
+      String packageRoot = path.dirname(targetAbsolute);
+      while (packageRoot != root && packageRoot.length >= root.length) {
+        final pubspecPath = path.join(packageRoot, 'pubspec.yaml');
+        if (await context.fs.exists(pubspecPath)) {
+          break;
+        }
+        packageRoot = path.dirname(packageRoot);
+      }
+      
+      if (packageRoot.length < root.length) {
+        packageRoot = root;
+      }
+      
+      workingDirectory = packageRoot;
+      final relativeTarget = path.relative(targetAbsolute, from: packageRoot);
+      args.addAll(['-t', relativeTarget]);
+    }
     try {
       await context.window.showMessage(
         'Running on $deviceId using ${flutterCmd.join(' ')}',
@@ -153,7 +177,7 @@ class RunService {
       final executable = flutterCmd.first;
       final finalArgs = [...flutterCmd.sublist(1), ...args];
 
-      await _logInfo('Running: $executable ${finalArgs.join(' ')}');
+      await _logInfo('Running: $executable ${finalArgs.join(' ')}\nWorking Directory: $workingDirectory');
 
       _activeAppId = null;
       _requestId = 0;
@@ -162,7 +186,7 @@ class RunService {
       _process = await Process.start(
         executable,
         finalArgs,
-        workingDirectory: root,
+        workingDirectory: workingDirectory,
       );
 
       _isRunning = true;
