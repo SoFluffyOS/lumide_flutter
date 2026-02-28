@@ -49,6 +49,12 @@ extension UriExtension on Uri {
 class ProjectService {
   final LumideContext context;
 
+  final List<String> _cachedProjects = [];
+  bool _projectsLoaded = false;
+
+  final List<String> _cachedTargets = [];
+  bool _targetsLoaded = false;
+
   ProjectService(this.context);
 
   /// Returns the root path of the Flutter project.
@@ -68,9 +74,13 @@ class ProjectService {
 
   /// Scans the workspace to find all folders containing a `pubspec.yaml`.
   /// Returns a list of paths to project roots.
-  Future<List<String>> findAllProjects() async {
+  Future<List<String>> findAllProjects({bool forceRefresh = false}) async {
+    if (_projectsLoaded && !forceRefresh) return _cachedProjects;
+
     final pubspecUris = await context.workspace.findFiles('**/pubspec.yaml');
     if (pubspecUris.isEmpty) {
+      _cachedProjects.clear();
+      _projectsLoaded = true;
       return [];
     }
 
@@ -83,6 +93,33 @@ class ProjectService {
         .toSet()
         .toList();
 
-    return projects;
+    _cachedProjects.clear();
+    _cachedProjects.addAll(projects);
+    _projectsLoaded = true;
+    return _cachedProjects;
+  }
+
+  /// Scans the workspace to find all `main.dart` files.
+  /// Returns a list of absolute paths to the entry points, omitting build/cache folders.
+  Future<List<String>> findAllTargets({bool forceRefresh = false}) async {
+    if (_targetsLoaded && !forceRefresh) return _cachedTargets;
+
+    final mainDartFiles = await context.workspace.findFiles('**/main.dart');
+    _cachedTargets.clear();
+
+    for (final uri in mainDartFiles) {
+      final parsed = Uri.parse(uri);
+      final absolutePath = parsed.toRealPath();
+
+      // Skip cache/build directories
+      if (absolutePath.contains('.dart_tool/') || absolutePath.contains('build/') || absolutePath.contains('.git/')) {
+        continue;
+      }
+
+      _cachedTargets.add(absolutePath);
+    }
+
+    _targetsLoaded = true;
+    return _cachedTargets;
   }
 }

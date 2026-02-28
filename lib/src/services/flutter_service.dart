@@ -222,7 +222,7 @@ class FlutterService {
 
   Future<void> pubGetAll() async {
     await context.window.showMessage('Scanning workspace for Flutter projects');
-    final projects = await projectService.findAllProjects();
+    final projects = await projectService.findAllProjects(forceRefresh: true);
 
     if (projects.isEmpty) {
       await context.window.showMessage(
