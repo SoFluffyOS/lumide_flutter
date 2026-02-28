@@ -12,6 +12,7 @@ permissions:
   - shell:
       - flutter
       - dart
+      - fvm
       - sh
       - bash
 
