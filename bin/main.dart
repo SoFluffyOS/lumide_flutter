@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:lumide_api/lumide_api.dart';
 import 'package:lumide_flutter/lumide_flutter.dart';
 import 'package:lumide_flutter/src/constants.dart';
@@ -64,7 +66,7 @@ class FlutterPlugin extends LumidePlugin {
     });
 
     // 6. Initial Data Fetch
-    await deviceService.refreshDevices();
+    unawaited(deviceService.refreshDevices());
 
     await context.window.showMessage('Flutter plugin ready');
   }

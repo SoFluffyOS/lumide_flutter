@@ -13,10 +13,14 @@ class DeviceService {
 
   List<Map<String, dynamic>> _devices = [];
   String? _selectedDeviceId;
+  bool _isLoading = false;
 
   DeviceService(this.context, this.statusBar, this.sdkManager);
 
   Future<void> refreshDevices() async {
+    _isLoading = true;
+    await _updateToolbar();
+
     try {
       final cmd = await sdkManager.getFlutterCommand(null);
 
@@ -34,10 +38,12 @@ class DeviceService {
         } else {
           _selectedDeviceId = null;
         }
-        await _updateToolbar();
       }
     } catch (e) {
       io.stderr.writeln('Failed to list devices: $e');
+    } finally {
+      _isLoading = false;
+      await _updateToolbar();
     }
   }
 
@@ -93,6 +99,18 @@ class DeviceService {
   }
 
   Future<void> _updateToolbar() async {
+    if (_isLoading) {
+      await context.toolbar.registerItem(
+        id: cmdFlutterDevice,
+        icon: iconSmartphone,
+        label: 'Scanning...',
+        tooltip: 'Scanning for devices...',
+        alignment: ToolbarItemAlignment.right,
+        priority: 200,
+      );
+      return;
+    }
+
     String icon = iconSmartphone;
     String? label;
     String tooltip = 'Select Device';
