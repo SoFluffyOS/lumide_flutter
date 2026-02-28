@@ -12,6 +12,7 @@ class FlutterPlugin extends LumidePlugin {
   late StatusBarService statusBarService;
   late ProjectService projectService;
   late SdkManager sdkManager;
+  late TargetService targetService;
   late RunService runService;
 
   @override
@@ -22,13 +23,15 @@ class FlutterPlugin extends LumidePlugin {
     sdkManager = SdkManager(context);
     flutterService = FlutterService(context, projectService, sdkManager);
     deviceService = DeviceService(context, statusBarService, sdkManager);
-    runService = RunService(context, projectService, sdkManager, deviceService);
+    targetService = TargetService(context, projectService);
+    runService = RunService(context, projectService, sdkManager, deviceService, targetService);
 
     // Inject RunService into FlutterService (break circular dependency)
     flutterService.setRunService(runService);
 
     // 2. Setup UI & Listeners
     await statusBarService.init();
+    await targetService.init();
     await runService.init();
 
     // 3. Environment Check
@@ -47,6 +50,10 @@ class FlutterPlugin extends LumidePlugin {
     // 5. Register Toolbar Listener
     context.toolbar.onTap((id, position) {
       switch (id) {
+        case cmdFlutterTarget:
+        case cmdFlutterSelectTarget:
+          targetService.selectTarget(position);
+          break;
         case cmdFlutterDevice:
           deviceService.selectDevice(position);
           break;
@@ -103,6 +110,12 @@ class FlutterPlugin extends LumidePlugin {
     );
 
     context.commands.registerCommand(
+      id: cmdFlutterSelectTarget,
+      title: 'Flutter: Select Target',
+      callback: ([args]) => targetService.selectTarget(),
+    );
+
+    context.commands.registerCommand(
       id: cmdFlutterRun,
       title: 'Flutter: Run',
       callback: ([args]) => runService.run(),
@@ -149,6 +162,7 @@ class FlutterPlugin extends LumidePlugin {
   Future<void> onDeactivate() async {
     await runService.dispose();
     await deviceService.dispose();
+    await targetService.dispose();
     await statusBarService.dispose();
     await flutterService.dispose();
   }

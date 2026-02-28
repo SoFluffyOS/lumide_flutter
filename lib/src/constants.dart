@@ -10,6 +10,8 @@ const String cmdFlutterPubGet = 'flutter.pub.get';
 const String cmdFlutterClean = 'flutter.clean';
 const String cmdFlutterCreate = 'flutter.create';
 const String cmdFlutterSelectDevice = 'flutter.selectDevice';
+const String cmdFlutterSelectTarget = 'flutter.selectTarget';
+const String cmdFlutterTarget = 'flutter.target';
 const String cmdFlutterOpenDevTools = 'flutter.openDevTools';
 const String cmdFlutterOpenDevToolsWebview = 'flutter.openDevToolsWebview';
 
@@ -42,6 +44,9 @@ const String iconRefresh = 'refresh';
 const String iconArchive = 'archive';
 const String iconTrash = 'trash';
 const String iconLayout = 'layout';
+const String iconTarget = 'crosshair';
+const String iconCode = 'code';
+const String iconEdit = 'pencil';
 
 // assets
 const String assetIconFlutterSolid = 'icon_flutter_solid.svg';

@@ -4,3 +4,4 @@ export 'project_service.dart';
 export 'run_service.dart';
 export 'sdk_manager.dart';
 export 'status_bar_service.dart';
+export 'target_service.dart';
