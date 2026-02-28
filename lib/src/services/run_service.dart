@@ -99,24 +99,21 @@ class RunService {
         alignment: ToolbarItemAlignment.right,
         priority: 98,
       );
-    } else {
-      await context.toolbar.unregisterItem(cmdFlutterStop);
-      await context.toolbar.unregisterItem(cmdFlutterHotReload);
-      await context.toolbar.unregisterItem(cmdFlutterHotRestart);
-
-      await context.toolbar.registerItem(
-        id: cmdFlutterRun,
-        icon: iconPlay,
-        tooltip: 'Run Flutter App',
-        alignment: ToolbarItemAlignment.right,
-        priority: 100,
-      );
+      return;
     }
-  }
 
-  // ---------------------------------------------------------------------------
-  // Run
-  // ---------------------------------------------------------------------------
+    await context.toolbar.unregisterItem(cmdFlutterStop);
+    await context.toolbar.unregisterItem(cmdFlutterHotReload);
+    await context.toolbar.unregisterItem(cmdFlutterHotRestart);
+
+    await context.toolbar.registerItem(
+      id: cmdFlutterRun,
+      icon: iconPlay,
+      tooltip: 'Run Flutter App',
+      alignment: ToolbarItemAlignment.right,
+      priority: 100,
+    );
+  }
 
   Future<void> run() async {
     if (_isRunning) {
@@ -206,15 +203,9 @@ class RunService {
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Machine protocol event handling
-  // ---------------------------------------------------------------------------
-
   void _handleStdoutLine(String line) {
     if (line.isEmpty) return;
 
-    // The --machine protocol emits JSON arrays on stdout, one per line.
-    // Non-JSON lines (e.g. Gradle output) are forwarded to the build channel.
     if (!line.startsWith('[')) {
       _buildChannel?.append(line);
       return;
@@ -244,12 +235,10 @@ class RunService {
         _logInfo('App started (appId: $_activeAppId)', channel: _buildChannel);
 
       case 'app.debugPort':
-        final wsUri = params['wsUri'] as String?;
-        if (wsUri != null) {
+        if (params['wsUri'] case final String wsUri) {
           _connectToVmService(wsUri);
         }
-        final baseUri = params['baseUri'] as String?;
-        if (baseUri != null) {
+        if (params['baseUri'] case final String baseUri) {
           _devToolsUrl = baseUri;
         }
 
@@ -281,14 +270,15 @@ class RunService {
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Machine protocol command dispatch
-  // ---------------------------------------------------------------------------
+  void _sendMachineCommand(
+    String method, [
+    Map<String, dynamic>? extraParams,
+  ]) {
+    final appId = _activeAppId;
+    final proc = _process;
+    if (proc == null || appId == null) return;
 
-  void _sendMachineCommand(String method, [Map<String, dynamic>? extraParams]) {
-    if (_process == null || _activeAppId == null) return;
-
-    final params = <String, dynamic>{'appId': _activeAppId!};
+    final params = <String, dynamic>{'appId': appId};
     if (extraParams != null) {
       params.addAll(extraParams);
     }
@@ -296,12 +286,8 @@ class RunService {
     final payload = [
       {'id': ++_requestId, 'method': method, 'params': params}
     ];
-    _process!.stdin.writeln(jsonEncode(payload));
+    proc.stdin.writeln(jsonEncode(payload));
   }
-
-  // ---------------------------------------------------------------------------
-  // VM Service
-  // ---------------------------------------------------------------------------
 
   Future<void> _connectToVmService(String wsUri) async {
     if (_vmService != null || _isConnectingToVmService) return;
@@ -320,14 +306,18 @@ class RunService {
         await service.streamListen(EventStreams.kLogging);
 
         _vmStdoutSub = service.onStdoutEvent.listen((event) {
-          if (event.kind == EventKind.kWriteEvent && event.bytes != null) {
-            _runChannel?.append(utf8.decode(base64Decode(event.bytes!)));
+          if (event.kind == EventKind.kWriteEvent) {
+            if (event.bytes case final String bytes) {
+              _runChannel?.append(utf8.decode(base64Decode(bytes)));
+            }
           }
         });
 
         _vmStderrSub = service.onStderrEvent.listen((event) {
-          if (event.kind == EventKind.kWriteEvent && event.bytes != null) {
-            _runChannel?.append(utf8.decode(base64Decode(event.bytes!)));
+          if (event.kind == EventKind.kWriteEvent) {
+            if (event.bytes case final String bytes) {
+              _runChannel?.append(utf8.decode(base64Decode(bytes)));
+            }
           }
         });
 
@@ -355,22 +345,24 @@ class RunService {
     }
   }
 
-  String _getLogLevelName(int level) {
-    if (level >= 1000) return 'ERROR';
-    if (level >= 900) return 'WARN';
-    if (level >= 800) return 'INFO';
-    if (level >= 700) return 'CONFIG';
-    if (level >= 500) return 'FINE';
-    return 'DEBUG';
-  }
+  String _getLogLevelName(int level) => switch (level) {
+        >= 1000 => 'ERROR',
+        >= 900 => 'WARN',
+        >= 800 => 'INFO',
+        >= 700 => 'CONFIG',
+        >= 500 => 'FINE',
+        _ => 'DEBUG',
+      };
 
   Future<void> _processLogRecord(
     Event event,
     LogRecord logRecord,
     bool underPressure,
   ) async {
-    final level =
-        logRecord.level != null ? _getLogLevelName(logRecord.level!) : 'LOG';
+    final level = switch (logRecord.level) {
+      final lvl? => _getLogLevelName(lvl),
+      null => 'LOG',
+    };
     final message = logRecord.message?.valueAsString ?? '';
 
     String? error;
@@ -385,7 +377,10 @@ class RunService {
       stack = await _getStringValue(logRecord.stackTrace, isolateId);
     }
 
-    final finalLevel = (error != null && error.isNotEmpty) ? 'ERROR' : level;
+    final finalLevel = switch (error) {
+      final e? when e.isNotEmpty => 'ERROR',
+      _ => level,
+    };
 
     final record = LumideLogRecord(
       level: finalLevel,
@@ -393,9 +388,10 @@ class RunService {
       name: logRecord.loggerName?.valueAsString,
       error: error,
       stackTrace: stack,
-      time: logRecord.time != null
-          ? DateTime.fromMillisecondsSinceEpoch(logRecord.time!)
-          : null,
+      time: switch (logRecord.time) {
+        final t? => DateTime.fromMillisecondsSinceEpoch(t),
+        null => null,
+      },
     );
 
     unawaited(_runChannel?.appendLog(record));
@@ -405,19 +401,20 @@ class RunService {
     if (ref == null) return null;
     if (ref.kind == InstanceKind.kNull) return null;
     if (ref.valueAsString == 'null') return null;
-    if (ref.valueAsString != null) return ref.valueAsString;
+    if (ref.valueAsString case final value?) return value;
 
-    if (_vmService != null && ref.id != null && isolateId != null) {
+    if (_vmService case final service?
+        when ref.id != null && isolateId != null) {
       try {
-        final result = await _vmService!.invoke(
+        final result = await service.invoke(
           isolateId,
-          ref.id!,
+          ref.id ?? '',
           'toString',
           [],
           disableBreakpoints: true,
         );
-        if (result is InstanceRef) {
-          return result.valueAsString;
+        if (result case final InstanceRef instanceRef) {
+          return instanceRef.valueAsString;
         }
       } catch (e) {
         return 'Instance of ${ref.classRef?.name} (Error: $e)';
@@ -437,13 +434,12 @@ class RunService {
     _vmService = null;
   }
 
-  // ---------------------------------------------------------------------------
-  // Hot Reload / Restart / Stop
-  // ---------------------------------------------------------------------------
-
   Future<void> hotReload() async {
     if (!_isRunning || _activeAppId == null) return;
-    _sendMachineCommand('app.restart', {'fullRestart': false, 'pause': false});
+    _sendMachineCommand(
+      'app.restart',
+      {'fullRestart': false, 'pause': false},
+    );
     await _logInfo('Hot Reload request sent.');
   }
 
@@ -458,21 +454,26 @@ class RunService {
       await _runChannel?.clear();
     }
 
-    _sendMachineCommand('app.restart', {'fullRestart': true, 'pause': false});
+    _sendMachineCommand(
+      'app.restart',
+      {'fullRestart': true, 'pause': false},
+    );
     await _logInfo('Hot Restart request sent.');
   }
 
   Future<void> openDevTools() async {
     if (!_isRunning) return;
 
-    if (_devToolsUrl != null) {
+    if (_devToolsUrl case final url?) {
       await context.window.showMessage('Opening DevTools in browser');
-      await context.window.openUrl(_devToolsUrl!);
+      await context.window.openUrl(url);
       return;
     }
 
-    _sendMachineCommand('app.callServiceExtension',
-        {'methodName': 'ext.flutter.activeDevToolsServerAddress'});
+    _sendMachineCommand(
+      'app.callServiceExtension',
+      {'methodName': 'ext.flutter.activeDevToolsServerAddress'},
+    );
     await context.window.showMessage(
       'DevTools URL not available yet. Try again shortly.',
     );
@@ -481,11 +482,11 @@ class RunService {
   Future<void> openDevToolsInWebview() async {
     if (!_isRunning) return;
 
-    if (_devToolsUrl != null) {
+    if (_devToolsUrl case final url?) {
       await context.window.createWebviewPanel(
         'flutter.devtools',
         'Flutter DevTools',
-        options: {'url': _devToolsUrl},
+        options: {'url': url},
       );
       return;
     }
@@ -525,10 +526,6 @@ class RunService {
     _devToolsUrl = null;
   }
 
-  // ---------------------------------------------------------------------------
-  // Lifecycle
-  // ---------------------------------------------------------------------------
-
   Future<void> dispose() async {
     await stop();
     await _disconnectVmService();
@@ -536,11 +533,10 @@ class RunService {
     await _buildChannel?.dispose();
   }
 
-  // ---------------------------------------------------------------------------
-  // Logging helpers
-  // ---------------------------------------------------------------------------
-
-  Future<void> _logInfo(String message, {LumideOutputChannel? channel}) async {
+  Future<void> _logInfo(
+    String message, {
+    LumideOutputChannel? channel,
+  }) async {
     final target = channel ?? _runChannel;
     await target?.appendLog(
       LumideLogRecord(
@@ -552,8 +548,11 @@ class RunService {
     );
   }
 
-  Future<void> _logError(String message,
-      [Object? error, LumideOutputChannel? channel]) async {
+  Future<void> _logError(
+    String message, [
+    Object? error,
+    LumideOutputChannel? channel,
+  ]) async {
     final target = channel ?? _runChannel;
     await target?.appendLog(
       LumideLogRecord(
