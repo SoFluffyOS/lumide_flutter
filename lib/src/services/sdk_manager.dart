@@ -1,4 +1,5 @@
 import 'package:lumide_api/lumide_api.dart';
+import 'package:path/path.dart' as path;
 
 class SdkManager {
   final LumideContext context;
@@ -7,13 +8,12 @@ class SdkManager {
 
   /// Determines the command to use for Flutter based on the project root.
   /// Returns ['flutter'] or ['fvm', 'flutter'] or checks for others.
-  Future<List<String>> getFlutterCommand(String? projectRoot) async {
-    if (projectRoot != null) {
-      // Check for FVM
-      // FVM usually creates .fvm/fvm_config.json
-      if (await context.fs.exists('$projectRoot/.fvm/fvm_config.json')) {
-        return ['fvm', 'flutter'];
-      }
+  Future<List<String>> getFlutterCommand(String projectRoot) async {
+    // Check for FVM
+    // FVM usually creates .fvm/fvm_config.json
+    final fvmPath = path.join(projectRoot, '.fvm', 'fvm_config.json');
+    if (await context.fs.exists(fvmPath)) {
+      return ['fvm', 'flutter'];
     }
 
     return ['flutter'];

@@ -5,6 +5,7 @@ import 'package:lumide_flutter/src/constants.dart';
 import 'package:lumide_flutter/src/services/project_service.dart';
 import 'package:lumide_flutter/src/services/run_service.dart';
 import 'package:lumide_flutter/src/services/sdk_manager.dart';
+import 'package:path/path.dart' as path;
 
 class FlutterService {
   final LumideContext context;
@@ -47,24 +48,17 @@ class FlutterService {
     final root = await projectService.getProjectRoot();
     final cmd = await sdkManager.getFlutterCommand(root);
 
-    if (root != null) {
-      return await _runWithCwd(cmd, args, root);
-    }
-
-    return await context.shell.run(cmd.first, [...cmd.sublist(1), ...args]);
+    return await _runWithCwd(cmd, args, root);
   }
 
   Future<void> _runCommandInProject(List<String> args, String statusMsg) async {
-    final root = await projectService.getProjectRoot();
-    if (root == null) {
-      await context.window.showMessage(
-          'No Flutter project found. Open a folder with a pubspec.yaml.',
-          type: MessageType.error);
-      return;
+    try {
+      final root = await projectService.getProjectRoot();
+      final cmd = await sdkManager.getFlutterCommand(root);
+      await _runCommand(cmd, args, statusMsg, workingDir: root);
+    } catch (e) {
+      await context.window.showMessage(e.toString(), type: MessageType.error);
     }
-
-    final cmd = await sdkManager.getFlutterCommand(root);
-    await _runCommand(cmd, args, statusMsg, workingDir: root);
   }
 
   Future<void> _runCommand(
@@ -109,13 +103,8 @@ class FlutterService {
     final fullArgs = [...cmdParts.sublist(1), ...args];
     final executable = cmdParts.first;
 
-    if (workingDir != null) {
-      final cmdStr = '$executable ${fullArgs.join(' ')}';
-      return await context.shell
-          .run('sh', ['-c', 'cd "$workingDir" && $cmdStr']);
-    }
-
-    return await context.shell.run(executable, fullArgs);
+    return await context.shell
+        .run(executable, fullArgs, workingDirectory: workingDir);
   }
 
   late final RunService runService;
@@ -242,37 +231,91 @@ class FlutterService {
       return;
     }
 
-    await context.window
-        .showMessage('Running pub get in ${projects.length} projects');
+    final validProjects = <String>[];
+    for (final project in projects) {
+      if (project.contains('.dart_tool')) continue;
+      try {
+        final pubspecString =
+            await context.fs.readString(path.join(project, 'pubspec.yaml'));
+        if (RegExp(r'resolution:\s*workspace').hasMatch(pubspecString)) {
+          continue;
+        }
+        validProjects.add(project);
+      } catch (_) {
+        // Keep in list to show read error later
+        validProjects.add(project);
+      }
+    }
 
-    final results = await Future.wait(projects.map((project) async {
+    if (validProjects.isEmpty) {
+      await context.window.showMessage(
+          'No runnable Flutter projects found in this workspace.',
+          type: MessageType.info);
+      return;
+    }
+
+    await context.window
+        .showMessage('Running pub get in ${validProjects.length} projects');
+
+    final output = runService.channel;
+    await output?.clear();
+    await output?.show();
+    await output?.append(
+        '> Running pub get in ${validProjects.length} projects...\n\n');
+
+    int successCount = 0;
+    int failCount = 0;
+
+    final workspaceRootUri = await context.workspace.getRootUri();
+
+    for (final project in validProjects) {
       try {
         final cmd = await sdkManager.getFlutterCommand(project);
+
+        String displayPath;
+        if (workspaceRootUri != null &&
+            path.isWithin(workspaceRootUri, project)) {
+          displayPath = path.relative(project, from: workspaceRootUri);
+        } else {
+          displayPath = path.basename(project);
+        }
+
+        await output?.append('--- [ $displayPath ] ---\n');
+
         final result = await _runWithCwd(cmd, ['pub', 'get'], project);
+
+        final stdout = result.stdout.toString().trim();
+        final stderr = result.stderr.toString().trim();
+
+        if (stdout.isNotEmpty) await output?.append('$stdout\n');
+        if (stderr.isNotEmpty) await output?.append('$stderr\n');
+
         if (result.exitCode != 0) {
           io.stderr.writeln('Failed pub get in $project: ${result.stderr}');
-          return false;
+          failCount++;
+        } else {
+          successCount++;
         }
-        return true;
+        await output?.append('\n');
       } catch (e) {
         io.stderr.writeln('Exception in $project: $e');
-        return false;
+        await output?.append('Exception fetching project: $e\n\n');
+        failCount++;
       }
-    }));
-
-    final successCount = results.where((s) => s).length;
-    final failCount = results.where((s) => !s).length;
+    }
 
     if (failCount == 0) {
       await context.window.showMessage(
         'Pub get completed in all $successCount projects',
         type: MessageType.info,
       );
+      await output?.append('> Pub get completed successfully.\n');
     } else {
       await context.window.showMessage(
-        'Pub get finished. $successCount succeeded, $failCount failed. Check logs.',
-        type: MessageType.warning,
+        'Pub get failed in $failCount projects.',
+        type: MessageType.error,
       );
+      await output?.append('> Pub get finished with $failCount errors.\n');
     }
   }
 

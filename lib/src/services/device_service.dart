@@ -22,7 +22,12 @@ class DeviceService {
     await _updateToolbar();
 
     try {
-      final cmd = await sdkManager.getFlutterCommand(null);
+      final rootPath = await context.workspace.getRootUri();
+      if (rootPath == null) {
+        throw Exception(
+            'Workspace root is required to use the Flutter plugin.');
+      }
+      final cmd = await sdkManager.getFlutterCommand(rootPath);
 
       final result = await context.shell
           .run(cmd.first, [...cmd.sublist(1), 'devices', '--machine']);

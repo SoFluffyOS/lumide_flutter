@@ -121,10 +121,12 @@ class RunService {
       return;
     }
 
-    final root = await projectService.getProjectRoot();
-    if (root == null) {
+    String root;
+    try {
+      root = await projectService.getProjectRoot();
+    } catch (e) {
       await context.window.showMessage(
-          'No Flutter project found. Open a project with a pubspec.yaml first.',
+          e.toString().replaceFirst('Exception: ', ''),
           type: MessageType.error);
       return;
     }
@@ -143,6 +145,7 @@ class RunService {
     try {
       await context.window.showMessage(
         'Running on $deviceId using ${flutterCmd.join(' ')}',
+        title: 'Flutter Run',
       );
       await _channel?.clear();
       await _channel?.show();
@@ -493,7 +496,14 @@ class RunService {
   Future<void> stop() async {
     if (!_isRunning || _process == null) return;
 
-    await context.window.showMessage('Stopping Flutter app');
+    final confirm = await context.window.showConfirmDialog(
+      'Are you sure you want to stop the running Flutter application?',
+      title: 'Stop Application',
+    );
+    if (!confirm) return;
+
+    await context.window
+        .showMessage('Stopping Flutter app', title: 'Flutter Run');
 
     if (_activeAppId != null) {
       _sendMachineCommand('app.stop');
