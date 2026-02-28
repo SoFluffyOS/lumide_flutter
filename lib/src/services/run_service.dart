@@ -17,6 +17,7 @@ class RunService {
   final DeviceService deviceService;
 
   LumideOutputChannel? _channel;
+  LumideOutputChannel? get channel => _channel;
 
   Process? _process;
   StreamSubscription<String>? _stdoutSub;

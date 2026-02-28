@@ -71,25 +71,36 @@ class FlutterService {
       List<String> cmdParts, List<String> args, String statusMsg,
       {String? workingDir}) async {
     await context.window.showMessage(statusMsg);
+
+    final output = runService.channel;
+    await output?.clear();
+    await output?.show();
+    await output?.append('> ${cmdParts.join(' ')} ${args.join(' ')}\n');
+
     try {
       final result = await _runWithCwd(cmdParts, args, workingDir);
 
-      io.stderr
-          .writeln('Command: $cmdParts ${args.join(' ')} (in $workingDir)');
-      io.stderr.writeln('Stdout: ${result.stdout}');
-      io.stderr.writeln('Stderr: ${result.stderr}');
+      final stdout = result.stdout.toString().trim();
+      final stderr = result.stderr.toString().trim();
+      if (stdout.isNotEmpty) {
+        await output?.append('$stdout\n');
+      }
+      if (stderr.isNotEmpty) {
+        await output?.append('$stderr\n');
+      }
 
       if (result.exitCode == 0) {
-        await context.window.showMessage('${args.first} completed');
+        await context.window
+            .showMessage('${args.join(' ')} completed successfully');
       } else {
         await context.window.showMessage(
-            '${args.first} failed (exit code ${result.exitCode}). Check Build Output.',
+            '${args.join(' ')} failed with exit code ${result.exitCode}',
             type: MessageType.error);
       }
     } catch (e) {
+      await output?.append('[ERROR] $e\n');
       await context.window
           .showMessage('Command failed: $e', type: MessageType.error);
-      io.stderr.writeln('Error: $e');
     }
   }
 
