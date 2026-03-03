@@ -37,6 +37,9 @@ class RunService {
   StreamSubscription? _vmStderrSub;
   StreamSubscription? _vmLoggingSub;
   String? _devToolsUrl;
+  String? _devToolsServerHost;
+  int? _devToolsServerPort;
+  String? _wsUri;
 
   String? _activeAppId;
   int _requestId = 0;
@@ -50,12 +53,6 @@ class RunService {
     final logLimit =
         await context.workspace.getConfiguration(confLogEntryLimit) as int? ??
             defaultLogEntryLimit;
-
-    try {
-      await daemonService.serveDevTools();
-    } catch (e) {
-      await context.window.showMessage('Failed to start DevTools server: $e');
-    }
 
     _channel = await context.window
         .createOutputChannel(channelFlutter, maxEntries: logLimit);
@@ -191,6 +188,7 @@ class RunService {
       _activeAppId = null;
       _requestId = 0;
       _devToolsUrl = null;
+      _wsUri = null;
 
       _process = await Process.start(
         executable,
@@ -216,6 +214,7 @@ class RunService {
           _process = null;
           _activeAppId = null;
           _devToolsUrl = null;
+          _wsUri = null;
           await _stdoutSub?.cancel();
           _stdoutSub = null;
           await _stderrSub?.cancel();
@@ -270,6 +269,7 @@ class RunService {
 
       case 'app.debugPort':
         if (params['wsUri'] case final String wsUri) {
+          _wsUri = wsUri;
           _connectToVmService(wsUri);
         }
 
@@ -530,19 +530,42 @@ class RunService {
     );
   }
 
+  Future<String?> _getOrCreateDevToolsUrl() async {
+    if (_devToolsUrl != null) return _devToolsUrl;
+    if (_wsUri == null) return null;
+
+    if (_devToolsServerHost == null || _devToolsServerPort == null) {
+      try {
+        final result = await daemonService.serveDevTools();
+        if (result['host'] != null && result['port'] != null) {
+          _devToolsServerHost = result['host'] as String?;
+          _devToolsServerPort = result['port'] as int?;
+        }
+      } catch (e) {
+        daemonService.logService.error('Failed to start DevTools server', e);
+        return null;
+      }
+    }
+
+    if (_devToolsServerHost != null && _devToolsServerPort != null) {
+      final encodedUri = Uri.encodeComponent(_wsUri!);
+      _devToolsUrl =
+          'http://$_devToolsServerHost:$_devToolsServerPort/?uri=$encodedUri';
+    }
+
+    return _devToolsUrl;
+  }
+
   Future<void> openDevTools() async {
     if (!_isRunning) return;
 
-    if (_devToolsUrl case final url?) {
+    final url = await _getOrCreateDevToolsUrl();
+    if (url != null) {
       await context.window.showMessage('Opening DevTools in browser');
       await context.window.openUrl(url);
       return;
     }
 
-    _sendMachineCommand(
-      'app.callServiceExtension',
-      {'methodName': 'ext.flutter.activeDevToolsServerAddress'},
-    );
     await context.window.showMessage(
       'DevTools URL not available yet. Try again shortly.',
     );
@@ -551,7 +574,8 @@ class RunService {
   Future<void> openDevToolsInWebview() async {
     if (!_isRunning) return;
 
-    if (_devToolsUrl case final url?) {
+    final url = await _getOrCreateDevToolsUrl();
+    if (url != null) {
       await context.window.createWebviewPanel(
         'flutter.devtools',
         'Flutter DevTools',
@@ -600,6 +624,7 @@ class RunService {
     _process = null;
     _activeAppId = null;
     _devToolsUrl = null;
+    _wsUri = null;
   }
 
   Future<void> dispose() async {
