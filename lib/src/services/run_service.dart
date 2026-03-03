@@ -414,16 +414,17 @@ class RunService {
       final lvl? => _getLogLevelName(lvl),
       null => 'LOG',
     };
-    final message = logRecord.message?.valueAsString ?? '';
-
+    String message;
     String? error;
     String? stack;
 
     if (underPressure) {
+      message = logRecord.message?.valueAsString ?? '';
       error = logRecord.error?.valueAsString;
       stack = logRecord.stackTrace?.valueAsString;
     } else {
       final isolateId = event.isolate?.id;
+      message = await _getStringValue(logRecord.message, isolateId) ?? '';
       error = await _getStringValue(logRecord.error, isolateId);
       stack = await _getStringValue(logRecord.stackTrace, isolateId);
     }
@@ -452,25 +453,44 @@ class RunService {
     if (ref == null) return null;
     if (ref.kind == InstanceKind.kNull) return null;
     if (ref.valueAsString == 'null') return null;
-    if (ref.valueAsString case final value?) return value;
 
     if (_vmService case final service?
         when ref.id != null && isolateId != null) {
-      try {
-        final result = await service.invoke(
-          isolateId,
-          ref.id ?? '',
-          'toString',
-          [],
-          disableBreakpoints: true,
-        );
-        if (result case final InstanceRef instanceRef) {
-          return instanceRef.valueAsString;
+      if (ref.valueAsStringIsTruncated == true) {
+        try {
+          final obj = await service.getObject(isolateId, ref.id!);
+          if (obj is Instance && obj.valueAsString != null) {
+            return obj.valueAsString;
+          }
+        } catch (_) {}
+      }
+
+      if (ref.valueAsString == null) {
+        try {
+          final result = await service.invoke(
+            isolateId,
+            ref.id ?? '',
+            'toString',
+            [],
+            disableBreakpoints: true,
+          );
+          if (result case final InstanceRef instanceRef) {
+            if (instanceRef.valueAsStringIsTruncated == true &&
+                instanceRef.id != null) {
+              final obj = await service.getObject(isolateId, instanceRef.id!);
+              if (obj is Instance && obj.valueAsString != null) {
+                return obj.valueAsString;
+              }
+            }
+            return instanceRef.valueAsString;
+          }
+        } catch (e) {
+          return 'Instance of ${ref.classRef?.name} (Error: $e)';
         }
-      } catch (e) {
-        return 'Instance of ${ref.classRef?.name} (Error: $e)';
       }
     }
+
+    if (ref.valueAsString case final value?) return value;
     return 'Instance of ${ref.classRef?.name}';
   }
 
