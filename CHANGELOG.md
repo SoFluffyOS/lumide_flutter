@@ -1,3 +1,15 @@
+## 1.3.0 (2026-03-03)
+
+### 🚀 New Features
+
+*   **Flutter Daemon Integration**: Utilize the Flutter Daemon to serve DevTools, removing manual webview fallbacks.
+*   **Reactive Device List**: Listen to device connections and disconnections via the daemon instead of manually polling or refreshing.
+
+### 🐞 Bug Fixes
+
+*   Prevent log truncation of multiline or extensive outputs coming from `developer.log`.
+*   Correct the Open DevTools menu icon.
+
 ## 1.2.0 (2026-02-28)
 
 ### 🚀 New Features
