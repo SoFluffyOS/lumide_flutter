@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:lumide_api/lumide_api.dart';
 import 'package:lumide_flutter/src/constants.dart';
+import 'package:lumide_flutter/src/services/daemon_service.dart';
 import 'package:lumide_flutter/src/services/device_service.dart';
 import 'package:lumide_flutter/src/services/project_service.dart';
 import 'package:lumide_flutter/src/services/sdk_manager.dart';
@@ -18,6 +19,7 @@ class RunService {
   final SdkManager sdkManager;
   final DeviceService deviceService;
   final TargetService targetService;
+  final DaemonService daemonService;
 
   LumideOutputChannel? _channel;
   LumideOutputChannel? get channel => _channel;
@@ -42,12 +44,18 @@ class RunService {
   int _maxPendingLogs = defaultMaxPendingLogs;
   int _pressureThreshold = defaultPressureThreshold;
   RunService(this.context, this.projectService, this.sdkManager,
-      this.deviceService, this.targetService);
+      this.deviceService, this.targetService, this.daemonService);
 
   Future<void> init() async {
     final logLimit =
         await context.workspace.getConfiguration(confLogEntryLimit) as int? ??
             defaultLogEntryLimit;
+
+    try {
+      await daemonService.serveDevTools();
+    } catch (e) {
+      await context.window.showMessage('Failed to start DevTools server: $e');
+    }
 
     _channel = await context.window
         .createOutputChannel(channelFlutter, maxEntries: logLimit);
@@ -264,8 +272,11 @@ class RunService {
         if (params['wsUri'] case final String wsUri) {
           _connectToVmService(wsUri);
         }
-        if (params['baseUri'] case final String baseUri) {
-          _devToolsUrl = baseUri;
+
+      case 'app.devTools':
+        if (params['uri'] case final String uri) {
+          _devToolsUrl = uri;
+          context.window.showMessage('DevTools available at: $uri');
         }
 
       case 'app.started':
@@ -280,8 +291,24 @@ class RunService {
       case 'app.progress':
         final message = params['message'] as String?;
         final finished = params['finished'] as bool? ?? false;
+        final id = params['id']?.toString();
+
         if (message != null && !finished) {
           _channel?.append('$message\n');
+        }
+
+        if (id != null) {
+          final itemId = 'flutter.progress.$id';
+          if (!finished && message != null) {
+            unawaited(context.statusBar.createItem(
+              id: itemId,
+              text: message,
+              alignment: 'right',
+              priority: 99,
+            ));
+          } else if (finished) {
+            unawaited(context.statusBar.disposeItem(itemId));
+          }
         }
 
       case 'app.stop':

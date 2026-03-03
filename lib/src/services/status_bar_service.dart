@@ -55,7 +55,7 @@ class StatusBarService {
       id: _versionItemId,
       text: '',
       alignment: 'right',
-      priority: 100,
+      priority: 98,
       tooltip: 'Flutter Tools',
       command: cmdFlutterTools,
       iconPath: foundPath,

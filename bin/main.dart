@@ -7,31 +7,38 @@ import 'package:lumide_flutter/src/constants.dart';
 void main() => FlutterPlugin().run();
 
 class FlutterPlugin extends LumidePlugin {
+  late LogService logService;
   late FlutterService flutterService;
   late DeviceService deviceService;
   late StatusBarService statusBarService;
   late ProjectService projectService;
   late SdkManager sdkManager;
+  late DaemonService daemonService;
   late TargetService targetService;
   late RunService runService;
 
   @override
   Future<void> onActivate(LumideContext context) async {
     // 1. Initialize core services
+    logService = LogService(log);
     statusBarService = StatusBarService(context);
     projectService = ProjectService(context);
     sdkManager = SdkManager(context);
+    daemonService =
+        DaemonService(context, projectService, sdkManager, logService);
     flutterService = FlutterService(context, projectService, sdkManager);
-    deviceService = DeviceService(context, statusBarService, sdkManager);
+    deviceService = DeviceService(context, statusBarService, daemonService);
     targetService = TargetService(context, projectService);
-    runService = RunService(
-        context, projectService, sdkManager, deviceService, targetService);
+    runService = RunService(context, projectService, sdkManager, deviceService,
+        targetService, daemonService);
 
     // Inject RunService into FlutterService (break circular dependency)
     flutterService.setRunService(runService);
 
     // 2. Setup UI & Listeners
+    await daemonService.start();
     await statusBarService.init();
+    await deviceService.init();
     await targetService.init();
     await runService.init();
 
@@ -161,6 +168,7 @@ class FlutterPlugin extends LumidePlugin {
 
   @override
   Future<void> onDeactivate() async {
+    await daemonService.dispose();
     await runService.dispose();
     await deviceService.dispose();
     await targetService.dispose();

@@ -1,53 +1,70 @@
-import 'dart:convert';
 import 'dart:io' as io;
 
 import 'package:lumide_api/lumide_api.dart';
 import 'package:lumide_flutter/src/constants.dart';
-import 'package:lumide_flutter/src/services/sdk_manager.dart';
+import 'package:lumide_flutter/src/services/daemon_service.dart';
 import 'package:lumide_flutter/src/services/status_bar_service.dart';
 
 class DeviceService {
   final LumideContext context;
   final StatusBarService statusBar;
-  final SdkManager sdkManager;
+  final DaemonService daemonService;
 
   List<Map<String, dynamic>> _devices = [];
   String? _selectedDeviceId;
   bool _isLoading = false;
+  bool _isInitialized = false;
 
-  DeviceService(this.context, this.statusBar, this.sdkManager);
+  DeviceService(this.context, this.statusBar, this.daemonService);
+
+  Future<void> init() async {
+    daemonService.onDeviceAdded.listen((device) {
+      if (!_devices.any((d) => d['id'] == device['id'])) {
+        _devices.add(device);
+        _selectedDeviceId ??= device['id'];
+        _updateToolbar();
+        if (_isInitialized) {
+          context.window.showMessage('Device connected: ${device['name']}');
+        }
+      }
+    });
+
+    daemonService.onDeviceRemoved.listen((device) {
+      _devices.removeWhere((d) => d['id'] == device['id']);
+      if (_selectedDeviceId == device['id']) {
+        _selectedDeviceId =
+            _devices.isNotEmpty ? _devices.first['id'] as String? : null;
+      }
+      _updateToolbar();
+      if (_isInitialized) {
+        context.window.showMessage('Device disconnected: ${device['name']}');
+      }
+    });
+
+    await daemonService.enableDevicePolling();
+  }
 
   Future<void> refreshDevices() async {
     _isLoading = true;
     await _updateToolbar();
 
     try {
-      final rootPath = await context.workspace.getRootUri();
-      if (rootPath == null) {
-        throw Exception(
-            'Workspace root is required to use the Flutter plugin.');
-      }
-      final cmd = await sdkManager.getFlutterCommand(rootPath);
+      final devices = await daemonService.getDevices();
+      _devices = List<Map<String, dynamic>>.from(devices);
 
-      final result = await context.shell
-          .run(cmd.first, [...cmd.sublist(1), 'devices', '--machine']);
-      if (result.exitCode == 0) {
-        final List<dynamic> devicesJson = jsonDecode(result.stdout.toString());
-        _devices = devicesJson.cast<Map<String, dynamic>>();
-
-        if (_devices.isNotEmpty) {
-          if (_selectedDeviceId == null ||
-              !_devices.any((d) => d['id'] == _selectedDeviceId)) {
-            _selectedDeviceId = _devices.first['id'];
-          }
-        } else {
-          _selectedDeviceId = null;
+      if (_devices.isNotEmpty) {
+        if (_selectedDeviceId == null ||
+            !_devices.any((d) => d['id'] == _selectedDeviceId)) {
+          _selectedDeviceId = _devices.first['id'];
         }
+      } else {
+        _selectedDeviceId = null;
       }
     } catch (e) {
       io.stderr.writeln('Failed to list devices: $e');
     } finally {
       _isLoading = false;
+      _isInitialized = true;
       await _updateToolbar();
     }
   }
