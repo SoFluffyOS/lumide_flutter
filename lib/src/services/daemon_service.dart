@@ -226,8 +226,13 @@ class DaemonService {
   Future<void> dispose() async {
     _failPendingRequests('Daemon service is disposing');
     if (_process != null) {
-      await _sendRequest('daemon.shutdown').catchError((_) {});
-      _process?.kill();
+      try {
+        await _sendRequest('daemon.shutdown');
+        // Give the daemon a few seconds to shut down gracefully
+        await _process?.exitCode.timeout(const Duration(seconds: 3));
+      } catch (_) {
+        _process?.kill(ProcessSignal.sigkill);
+      }
       _process = null;
     }
     await _stdoutSub?.cancel();
