@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io' as io;
 
 import 'package:lumide_api/lumide_api.dart';
@@ -15,10 +16,13 @@ class DeviceService {
   bool _isLoading = false;
   bool _isInitialized = false;
 
+  StreamSubscription? _deviceAddedSub;
+  StreamSubscription? _deviceRemovedSub;
+
   DeviceService(this.context, this.statusBar, this.daemonService);
 
   Future<void> init() async {
-    daemonService.onDeviceAdded.listen((device) {
+    _deviceAddedSub = daemonService.onDeviceAdded.listen((device) {
       if (!_devices.any((d) => d['id'] == device['id'])) {
         _devices.add(device);
         _selectedDeviceId ??= device['id'];
@@ -29,7 +33,7 @@ class DeviceService {
       }
     });
 
-    daemonService.onDeviceRemoved.listen((device) {
+    _deviceRemovedSub = daemonService.onDeviceRemoved.listen((device) {
       _devices.removeWhere((d) => d['id'] == device['id']);
       if (_selectedDeviceId == device['id']) {
         _selectedDeviceId =
@@ -174,6 +178,8 @@ class DeviceService {
   String? get selectedDeviceId => _selectedDeviceId;
 
   Future<void> dispose() async {
+    await _deviceAddedSub?.cancel();
+    await _deviceRemovedSub?.cancel();
     await context.toolbar.unregisterItem(cmdFlutterDevice);
   }
 }
