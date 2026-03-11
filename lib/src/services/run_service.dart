@@ -206,7 +206,7 @@ class RunService {
             .listen(_handleStdoutLine);
 
         _stderrSub = proc.stderr.transform(utf8.decoder).listen((data) {
-          _channel?.append('[ERR] $data');
+          _channel?.append(data);
         });
 
         unawaited(proc.exitCode.then((code) async {
