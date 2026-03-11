@@ -19,8 +19,8 @@ The official Flutter extension for [Lumide IDE](https://lumide.dev).
 - **Platform Icons**: Visual indicators for device types (Mobile, Web, Monitor).
 
 ### ⚡ Run & Debug
-- **Hot Reload**: Trigger hot reload on save (configurable) or via the toolbar.
-- **Hot Restart**: Full application restart with a single click.
+- **Hot Reload**: Trigger hot reload on save (configurable), via the toolbar, or with `Cmd + \`.
+- **Hot Restart**: Full application restart with `Cmd + Shift + \` or a single click on the toolbar.
 - **DevTools**: Open [Dart DevTools](https://flutter.dev/devtools) directly within a Lumide pane or in your external browser.
 - **Log Streaming**: View colored, real-time logs in the **Flutter** output channel. Separate **Build Output** keeps things clean.
 
@@ -40,8 +40,8 @@ Access these via the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`):
 | `flutter.create` | **Flutter: New Project** | Create a basic Flutter app |
 | `flutter.selectDevice` | **Flutter: Select Device** | Choose run target |
 | `flutter.run` | **Flutter: Run** | Start app on selected device |
-| `flutter.hotReload` | **Flutter: Hot Reload** | Update code changes (JIT) |
-| `flutter.hotRestart` | **Flutter: Hot Restart** | Restart app state |
+| `flutter.hotReload` | **Flutter: Hot Reload** (`Cmd+\`) | Update code changes (JIT) |
+| `flutter.hotRestart` | **Flutter: Hot Restart** (`Cmd+Shift+\`) | Restart app state |
 | `flutter.stop` | **Flutter: Stop App** | Terminate process |
 | `flutter.openDevToolsWebview` | **Flutter: Open DevTools** | Open in split pane |
 

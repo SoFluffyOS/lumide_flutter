@@ -1,3 +1,10 @@
+## 1.4.0 (2026-03-11)
+
+### 🚀 New Features
+
+*   **Keyboard Shortcuts**: Added `Cmd + \` for Hot Reload and `Cmd + Shift + \` for Hot Restart.
+*   **Device Icons**: Fixed an issue where all devices showed a smartphone icon; now correctly displays icons for Web and Desktop targets.
+
 ## 1.3.0 (2026-03-03)
 
 ### 🚀 New Features
