@@ -81,3 +81,8 @@ contributes:
     - id: flutter.openDevToolsWebview
       title: 'Flutter: Open DevTools'
       category: 'Flutter'
+  keybindings:
+    - command: flutter.hotReload
+      key: 'cmd+\'
+    - command: flutter.hotRestart
+      key: 'cmd+shift+\'
