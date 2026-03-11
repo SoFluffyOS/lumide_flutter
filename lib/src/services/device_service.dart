@@ -76,15 +76,7 @@ class DeviceService {
   Future<void> selectDevice([Map<String, int>? position]) async {
     // Show cached devices immediately + Refresh option
     final items = _devices.map((d) {
-      String icon = iconSmartphone;
-      final platform = d['targetPlatform']?.toString().toLowerCase() ?? '';
-      if (platform.startsWith('web')) {
-        icon = iconGlobe;
-      } else if (platform == 'darwin' ||
-          platform.startsWith('windows') ||
-          platform.startsWith('linux')) {
-        icon = iconMonitor;
-      }
+      final icon = _getDeviceIcon(d);
 
       return QuickPickItem(
         label: d['name'],
@@ -147,19 +139,7 @@ class DeviceService {
       if (device.isNotEmpty) {
         label = device['name'];
         tooltip = 'Device: ${device['name']}';
-
-        final platform =
-            device['targetPlatform']?.toString().toLowerCase() ?? '';
-
-        if (platform.startsWith('web')) {
-          icon = iconGlobe;
-        } else if (platform == 'darwin' ||
-            platform.startsWith('windows') ||
-            platform.startsWith('linux')) {
-          icon = iconMonitor;
-        } else if (platform.startsWith('android') || platform == 'ios') {
-          icon = iconSmartphone;
-        }
+        icon = _getDeviceIcon(device);
       }
     } else {
       tooltip = 'No Devices Found';
@@ -173,6 +153,36 @@ class DeviceService {
       alignment: ToolbarItemAlignment.right,
       priority: 200,
     );
+  }
+
+  String _getDeviceIcon(Map<String, dynamic> device) {
+    // Flutter daemon device fields can vary.
+    // Usually it has 'category', 'platformType', or 'platform'.
+    final category = device['category']?.toString().toLowerCase() ?? '';
+    final platformType = device['platformType']?.toString().toLowerCase() ?? '';
+    final platform = device['platform']?.toString().toLowerCase() ?? '';
+    final targetPlatform =
+        device['targetPlatform']?.toString().toLowerCase() ?? '';
+
+    // Web
+    if (category == 'web' ||
+        platformType == 'web' ||
+        platform == 'web' ||
+        targetPlatform.startsWith('web')) {
+      return iconGlobe;
+    }
+
+    // Desktop
+    if (category == 'desktop' ||
+        platformType == 'desktop' ||
+        ['darwin', 'macos', 'linux', 'windows'].contains(platform) ||
+        ['darwin', 'macos', 'linux', 'windows']
+            .any((p) => targetPlatform.startsWith(p))) {
+      return iconMonitor;
+    }
+
+    // Default to smartphone for mobile (android, ios) or fallback
+    return iconSmartphone;
   }
 
   String? get selectedDeviceId => _selectedDeviceId;
