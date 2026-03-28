@@ -4,6 +4,10 @@ version: 1.4.0
 homepage: https://lumide.dev
 repository: https://github.com/SoFluffyOS/lumide_flutter
 
+topics:
+  - lumide-languages
+  - lumide-plugin
+
 executables:
   lumide_flutter: main
 
