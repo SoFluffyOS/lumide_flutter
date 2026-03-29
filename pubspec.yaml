@@ -5,7 +5,7 @@ homepage: https://lumide.dev
 repository: https://github.com/SoFluffyOS/lumide_flutter
 
 topics:
-  - lumide-languages
+  - lumide-frameworks
   - lumide-plugin
 
 executables:
