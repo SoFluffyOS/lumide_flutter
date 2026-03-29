@@ -1,4 +1,4 @@
-## 1.4.1 (2026-03-29)
+## 1.4.1+1 (2026-03-29)
 
 ### ⬆️ Upgrade lumide_api
 * Bump `lumide_api` dependency to `1.1.0`.
