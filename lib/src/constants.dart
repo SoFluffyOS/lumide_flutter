@@ -1,5 +1,6 @@
 // commands
 const String cmdFlutterRun = 'flutter.run';
+const String cmdFlutterDebug = 'flutter.debug';
 const String cmdFlutterStop = 'flutter.stop';
 const String cmdFlutterHotReload = 'flutter.hotReload';
 const String cmdFlutterHotRestart = 'flutter.hotRestart';
@@ -37,6 +38,7 @@ const String iconZap = 'zap';
 const String iconRefreshCw = 'refresh-cw';
 const String iconStop = 'stop';
 const String iconPlay = 'play';
+const String iconBug = 'bug';
 const String iconSmartphone = 'smartphone';
 const String iconGlobe = 'globe';
 const String iconMonitor = 'monitor';

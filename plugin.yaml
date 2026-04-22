@@ -57,6 +57,9 @@ contributes:
     - id: flutter.run
       title: 'Flutter: Run'
       category: 'Flutter'
+    - id: flutter.debug
+      title: 'Flutter: Debug'
+      category: 'Flutter'
     - id: flutter.hotReload
       title: 'Flutter: Hot Reload'
       category: 'Flutter'

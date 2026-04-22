@@ -68,6 +68,9 @@ class FlutterPlugin extends LumidePlugin {
         case cmdFlutterRun:
           runService.run();
           break;
+        case cmdFlutterDebug:
+          runService.debug();
+          break;
         case cmdFlutterStop:
           runService.stop();
           break;
@@ -127,6 +130,12 @@ class FlutterPlugin extends LumidePlugin {
       id: cmdFlutterRun,
       title: 'Flutter: Run',
       callback: ([args]) => runService.run(),
+    );
+
+    context.commands.registerCommand(
+      id: cmdFlutterDebug,
+      title: 'Flutter: Debug',
+      callback: ([args]) => runService.debug(),
     );
 
     context.commands.registerCommand(

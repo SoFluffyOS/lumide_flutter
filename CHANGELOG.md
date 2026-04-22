@@ -1,3 +1,14 @@
+## 1.5.0 (2026-04-22)
+
+_This release requires Lumide version >= 0.2.0._
+
+### 🚀 New Features
+
+* **Debugging support**: Now you can debug your Flutter apps by pressing Debug icon in the toolbar or launch `Flutter: Debug` command.
+
+### ⬆️ Upgrade lumide_api
+* Bump `lumide_api` dependency to `1.2.0` to support debugging.
+
 ## 1.4.1+1 (2026-03-29)
 
 ### ⬆️ Upgrade lumide_api
