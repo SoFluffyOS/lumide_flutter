@@ -19,14 +19,21 @@ The official Flutter extension for [Lumide IDE](https://lumide.dev).
 - **Platform Icons**: Visual indicators for device types (Mobile, Web, Monitor).
 
 ### ⚡ Run & Debug
+- **Debug Sessions**: Launch Flutter under the debugger from the toolbar Debug button or the `Flutter: Debug` command.
+- **Breakpoints**: Set breakpoints in the editor gutter and inspect verified breakpoint state in Lumide’s debug panel.
+- **Stack & Variables**: Inspect stack frames, scopes, and expandable variables directly in the debug panel when execution pauses.
+- **Stepping Controls**: Continue, Pause, Step Over, Step Into, Step Out, and Stop are exposed through the debug toolbar.
+- **Exception Filters**: Switch between ignored, uncaught, and all exceptions from the debug panel.
 - **Hot Reload**: Trigger hot reload on save (configurable), via the toolbar, or with `Cmd + \`.
 - **Hot Restart**: Full application restart with `Cmd + Shift + \` or a single click on the toolbar.
 - **DevTools**: Open [Dart DevTools](https://flutter.dev/devtools) directly within a Lumide pane or in your external browser.
-- **Log Streaming**: View colored, real-time logs in the **Flutter** output channel. Separate **Build Output** keeps things clean.
+- **Debug Output**: In debug mode, Flutter logs are shown inside the debug panel’s Output section so logs and paused-state inspection stay together.
+- **Run Output**: In run mode, view colored, real-time logs in the **Flutter** output channel. Separate **Build Output** keeps things clean.
 
 ### 🛠 Editor Integration
 - **Status Bar**: Shows the active Flutter SDK version. Click to access the *Flutter Tools* menu.
 - **Toolbar**: Context-aware controls (Run, Stop, Reload, Restart) appear when a Flutter project is active.
+- **Debug Navigation**: When a breakpoint is hit, Lumide jumps to the stopped source location and lets you navigate by stack frame or breakpoint entry.
 
 ## Commands
 
@@ -40,6 +47,7 @@ Access these via the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`):
 | `flutter.create` | **Flutter: New Project** | Create a basic Flutter app |
 | `flutter.selectDevice` | **Flutter: Select Device** | Choose run target |
 | `flutter.run` | **Flutter: Run** | Start app on selected device |
+| `flutter.debug` | **Flutter: Debug** | Start app on selected device with debugger attached |
 | `flutter.hotReload` | **Flutter: Hot Reload** (`Cmd+\`) | Update code changes (JIT) |
 | `flutter.hotRestart` | **Flutter: Hot Restart** (`Cmd+Shift+\`) | Restart app state |
 | `flutter.stop` | **Flutter: Stop App** | Terminate process |
