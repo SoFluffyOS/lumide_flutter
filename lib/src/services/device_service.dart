@@ -21,6 +21,8 @@ class DeviceService {
 
   DeviceService(this.context, this.statusBar, this.daemonService);
 
+  bool get _isMacOS => io.Platform.isMacOS;
+
   Future<void> init() async {
     _deviceAddedSub = daemonService.onDeviceAdded.listen((device) {
       if (!_devices.any((d) => d['id'] == device['id'])) {
@@ -74,6 +76,8 @@ class DeviceService {
   }
 
   Future<void> selectDevice([Map<String, int>? position]) async {
+    final hasIosSimulatorDevice = _devices.any(_isIosSimulatorDevice);
+
     // Show cached devices immediately + Refresh option
     final items = _devices.map((d) {
       final icon = _getDeviceIcon(d);
@@ -89,6 +93,15 @@ class DeviceService {
 
     // Add divider/refresh option
     items.add(const QuickPickItem(label: '', isSeparator: true));
+
+    if (_isMacOS && !hasIosSimulatorDevice) {
+      items.add(const QuickPickItem(
+        label: 'Start iOS Simulator',
+        detail: 'Launch Apple Simulator app',
+        payload: 'start-ios-simulator',
+        icon: iconPlay,
+      ));
+    }
 
     items.add(const QuickPickItem(
       label: 'Refresh Devices...',
@@ -109,11 +122,69 @@ class DeviceService {
         await context.window.showMessage('Scanning for connected devices');
         await refreshDevices();
         await selectDevice(position); // Re-open picker
+      } else if (payload == 'start-ios-simulator') {
+        await _startIosSimulator();
       } else {
         _selectedDeviceId = payload;
         await _updateToolbar();
       }
     }
+  }
+
+  Future<void> _startIosSimulator() async {
+    if (!_isMacOS) {
+      return;
+    }
+
+    await context.window.showMessage('Starting iOS Simulator...');
+
+    try {
+      final result = await context.shell.run(
+        'sh',
+        ['-lc', 'open -a Simulator'],
+      );
+      if (result.exitCode != 0) {
+        final stderr = result.stderr.toString().trim();
+        await context.window.showMessage(
+          stderr.isNotEmpty
+              ? 'Failed to start iOS Simulator: $stderr'
+              : 'Failed to start iOS Simulator.',
+          type: MessageType.error,
+        );
+        return;
+      }
+      // Give Simulator a moment so daemon refresh can discover it.
+      await Future.delayed(const Duration(seconds: 2));
+      await refreshDevices();
+
+      // Auto-select simulator so toolbar switches away from macOS host.
+      for (final device in _devices) {
+        if (_isIosSimulatorDevice(device) && device['id'] != null) {
+          _selectedDeviceId = device['id'] as String;
+          break;
+        }
+      }
+      await _updateToolbar();
+    } catch (e) {
+      await context.window.showMessage(
+        'Failed to start iOS Simulator: $e',
+        type: MessageType.error,
+      );
+    }
+  }
+
+  bool _isIosSimulatorDevice(Map<String, dynamic> device) {
+    final category = device['category']?.toString().toLowerCase() ?? '';
+    final platformType = device['platformType']?.toString().toLowerCase() ?? '';
+    final platform = device['platform']?.toString().toLowerCase() ?? '';
+    final targetPlatform =
+        device['targetPlatform']?.toString().toLowerCase() ?? '';
+
+    final iosLikePlatform =
+        platform == 'ios' || targetPlatform.startsWith('ios');
+
+    return (category == 'mobile' || platformType == 'mobile') &&
+        iosLikePlatform;
   }
 
   Future<void> _updateToolbar() async {
