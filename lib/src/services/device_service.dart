@@ -55,11 +55,16 @@ class DeviceService {
     await _updateToolbar();
 
     try {
-      final devices = await daemonService.getDevices();
+      final devices =
+          List<Map<String, dynamic>>.from(await daemonService.getDevices())
+            ..sort((a, b) => _deviceSortRank(a).compareTo(_deviceSortRank(b)));
       _devices = List<Map<String, dynamic>>.from(devices);
 
       if (_devices.isNotEmpty) {
-        if (_selectedDeviceId == null ||
+        if (!_isInitialized) {
+          // During startup, prefer the best-ranked device from the refreshed list.
+          _selectedDeviceId = _devices.first['id'] as String?;
+        } else if (_selectedDeviceId == null ||
             !_devices.any((d) => d['id'] == _selectedDeviceId)) {
           _selectedDeviceId = _devices.first['id'];
         }
@@ -76,10 +81,13 @@ class DeviceService {
   }
 
   Future<void> selectDevice([Map<String, int>? position]) async {
-    final hasIosSimulatorDevice = _devices.any(_isIosSimulatorDevice);
+    final devices = List<Map<String, dynamic>>.from(_devices)
+      ..sort((a, b) => _deviceSortRank(a).compareTo(_deviceSortRank(b)));
+
+    final hasIosSimulatorDevice = devices.any(_isIosSimulatorDevice);
 
     // Show cached devices immediately + Refresh option
-    final items = _devices.map((d) {
+    final items = devices.map((d) {
       final icon = _getDeviceIcon(d);
 
       return QuickPickItem(
@@ -173,6 +181,16 @@ class DeviceService {
     }
   }
 
+  int _deviceSortRank(Map<String, dynamic> device) {
+    if (_isMacOS && _isIosSimulatorDevice(device)) {
+      return 0;
+    }
+    if (_isMacOS && _isMacOsDesktopDevice(device)) {
+      return 1;
+    }
+    return 2;
+  }
+
   bool _isIosSimulatorDevice(Map<String, dynamic> device) {
     final category = device['category']?.toString().toLowerCase() ?? '';
     final platformType = device['platformType']?.toString().toLowerCase() ?? '';
@@ -185,6 +203,21 @@ class DeviceService {
 
     return (category == 'mobile' || platformType == 'mobile') &&
         iosLikePlatform;
+  }
+
+  bool _isMacOsDesktopDevice(Map<String, dynamic> device) {
+    final category = device['category']?.toString().toLowerCase() ?? '';
+    final platformType = device['platformType']?.toString().toLowerCase() ?? '';
+    final platform = device['platform']?.toString().toLowerCase() ?? '';
+    final targetPlatform =
+        device['targetPlatform']?.toString().toLowerCase() ?? '';
+
+    return category == 'desktop' &&
+        (platformType == 'desktop' ||
+            platform == 'darwin' ||
+            platform == 'macos' ||
+            targetPlatform.startsWith('darwin') ||
+            targetPlatform.startsWith('macos'));
   }
 
   Future<void> _updateToolbar() async {
