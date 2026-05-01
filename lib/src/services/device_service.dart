@@ -161,24 +161,79 @@ class DeviceService {
         );
         return;
       }
-      // Give Simulator a moment so daemon refresh can discover it.
-      await Future.delayed(const Duration(seconds: 2));
-      await refreshDevices();
-
-      // Auto-select simulator so toolbar switches away from macOS host.
-      for (final device in _devices) {
-        if (_isIosSimulatorDevice(device) && device['id'] != null) {
-          _selectedDeviceId = device['id'] as String;
-          break;
-        }
+      final selected = await _waitAndSelectIosSimulator();
+      if (!selected) {
+        await context.window.showMessage(
+          'Simulator started, but no iOS simulator device was detected yet. Try Refresh Devices.',
+          type: MessageType.warning,
+        );
       }
-      await _updateToolbar();
     } catch (e) {
       await context.window.showMessage(
         'Failed to start iOS Simulator: $e',
         type: MessageType.error,
       );
     }
+  }
+
+  Future<bool> _waitAndSelectIosSimulator() async {
+    await refreshDevices();
+
+    final existing = _findFirstIosSimulatorDevice(_devices);
+    if (_trySelectDevice(existing)) {
+      await _updateToolbar();
+      return true;
+    }
+
+    final completer = Completer<Map<String, dynamic>?>();
+    late final StreamSubscription<Map<String, dynamic>> addedSub;
+    addedSub = daemonService.onDeviceAdded.listen((device) {
+      if (!completer.isCompleted && _isIosSimulatorDevice(device)) {
+        completer.complete(device);
+      }
+    });
+
+    try {
+      final addedDevice = await completer.future.timeout(
+        const Duration(seconds: 20),
+        onTimeout: () => null,
+      );
+
+      await refreshDevices();
+
+      if (_trySelectDevice(addedDevice)) {
+        await _updateToolbar();
+        return true;
+      }
+
+      final detected = _findFirstIosSimulatorDevice(_devices);
+      if (_trySelectDevice(detected)) {
+        await _updateToolbar();
+        return true;
+      }
+    } finally {
+      await addedSub.cancel();
+    }
+
+    return false;
+  }
+
+  Map<String, dynamic>? _findFirstIosSimulatorDevice(
+      List<Map<String, dynamic>> devices) {
+    for (final device in devices) {
+      if (_isIosSimulatorDevice(device)) {
+        return device;
+      }
+    }
+    return null;
+  }
+
+  bool _trySelectDevice(Map<String, dynamic>? device) {
+    if (device == null) return false;
+    final id = device['id'];
+    if (id is! String || id.isEmpty) return false;
+    _selectedDeviceId = id;
+    return true;
   }
 
   int _deviceSortRank(Map<String, dynamic> device) {
