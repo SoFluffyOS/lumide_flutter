@@ -21,6 +21,8 @@ class DeviceService {
 
   DeviceService(this.context, this.statusBar, this.daemonService);
 
+  bool get _isMacOS => io.Platform.isMacOS;
+
   Future<void> init() async {
     _deviceAddedSub = daemonService.onDeviceAdded.listen((device) {
       if (!_devices.any((d) => d['id'] == device['id'])) {
@@ -53,11 +55,16 @@ class DeviceService {
     await _updateToolbar();
 
     try {
-      final devices = await daemonService.getDevices();
+      final devices =
+          List<Map<String, dynamic>>.from(await daemonService.getDevices())
+            ..sort((a, b) => _deviceSortRank(a).compareTo(_deviceSortRank(b)));
       _devices = List<Map<String, dynamic>>.from(devices);
 
       if (_devices.isNotEmpty) {
-        if (_selectedDeviceId == null ||
+        if (!_isInitialized) {
+          // During startup, prefer the best-ranked device from the refreshed list.
+          _selectedDeviceId = _devices.first['id'] as String?;
+        } else if (_selectedDeviceId == null ||
             !_devices.any((d) => d['id'] == _selectedDeviceId)) {
           _selectedDeviceId = _devices.first['id'];
         }
@@ -74,8 +81,13 @@ class DeviceService {
   }
 
   Future<void> selectDevice([Map<String, int>? position]) async {
+    final devices = List<Map<String, dynamic>>.from(_devices)
+      ..sort((a, b) => _deviceSortRank(a).compareTo(_deviceSortRank(b)));
+
+    final hasIosSimulatorDevice = devices.any(_isIosSimulatorDevice);
+
     // Show cached devices immediately + Refresh option
-    final items = _devices.map((d) {
+    final items = devices.map((d) {
       final icon = _getDeviceIcon(d);
 
       return QuickPickItem(
@@ -89,6 +101,15 @@ class DeviceService {
 
     // Add divider/refresh option
     items.add(const QuickPickItem(label: '', isSeparator: true));
+
+    if (_isMacOS && !hasIosSimulatorDevice) {
+      items.add(const QuickPickItem(
+        label: 'Start iOS Simulator',
+        detail: 'Launch Apple Simulator app',
+        payload: 'start-ios-simulator',
+        icon: iconPlay,
+      ));
+    }
 
     items.add(const QuickPickItem(
       label: 'Refresh Devices...',
@@ -109,11 +130,151 @@ class DeviceService {
         await context.window.showMessage('Scanning for connected devices');
         await refreshDevices();
         await selectDevice(position); // Re-open picker
+      } else if (payload == 'start-ios-simulator') {
+        await _startIosSimulator();
       } else {
         _selectedDeviceId = payload;
         await _updateToolbar();
       }
     }
+  }
+
+  Future<void> _startIosSimulator() async {
+    if (!_isMacOS) {
+      return;
+    }
+
+    await context.window.showMessage('Starting iOS Simulator...');
+
+    try {
+      final result = await context.shell.run(
+        'open',
+        ['-a', 'Simulator'],
+      );
+      if (result.exitCode != 0) {
+        final stderr = result.stderr.toString().trim();
+        await context.window.showMessage(
+          stderr.isNotEmpty
+              ? 'Failed to start iOS Simulator: $stderr'
+              : 'Failed to start iOS Simulator.',
+          type: MessageType.error,
+        );
+        return;
+      }
+      final selected = await _waitAndSelectIosSimulator();
+      if (!selected) {
+        await context.window.showMessage(
+          'Simulator started, but no iOS simulator device was detected yet. Try Refresh Devices.',
+          type: MessageType.warning,
+        );
+      }
+    } catch (e) {
+      await context.window.showMessage(
+        'Failed to start iOS Simulator: $e',
+        type: MessageType.error,
+      );
+    }
+  }
+
+  Future<bool> _waitAndSelectIosSimulator() async {
+    await refreshDevices();
+
+    final existing = _findFirstIosSimulatorDevice(_devices);
+    if (_trySelectDevice(existing)) {
+      await _updateToolbar();
+      return true;
+    }
+
+    final completer = Completer<Map<String, dynamic>?>();
+    late final StreamSubscription<Map<String, dynamic>> addedSub;
+    addedSub = daemonService.onDeviceAdded.listen((device) {
+      if (!completer.isCompleted && _isIosSimulatorDevice(device)) {
+        completer.complete(device);
+      }
+    });
+
+    try {
+      final addedDevice = await completer.future.timeout(
+        const Duration(seconds: 20),
+        onTimeout: () => null,
+      );
+
+      await refreshDevices();
+
+      if (_trySelectDevice(addedDevice)) {
+        await _updateToolbar();
+        return true;
+      }
+
+      final detected = _findFirstIosSimulatorDevice(_devices);
+      if (_trySelectDevice(detected)) {
+        await _updateToolbar();
+        return true;
+      }
+    } finally {
+      await addedSub.cancel();
+    }
+
+    return false;
+  }
+
+  Map<String, dynamic>? _findFirstIosSimulatorDevice(
+      List<Map<String, dynamic>> devices) {
+    for (final device in devices) {
+      if (_isIosSimulatorDevice(device)) {
+        return device;
+      }
+    }
+    return null;
+  }
+
+  bool _trySelectDevice(Map<String, dynamic>? device) {
+    if (device == null) return false;
+    final id = device['id'];
+    if (id is! String || id.isEmpty) return false;
+    _selectedDeviceId = id;
+    return true;
+  }
+
+  int _deviceSortRank(Map<String, dynamic> device) {
+    if (_isMacOS && _isIosSimulatorDevice(device)) {
+      return 0;
+    }
+    if (_isMacOS && _isMacOsDesktopDevice(device)) {
+      return 1;
+    }
+    return 2;
+  }
+
+  bool _isIosSimulatorDevice(Map<String, dynamic> device) {
+    final isEmulator = device['emulator'] == true;
+    final category = device['category']?.toString().toLowerCase() ?? '';
+    final platformType = device['platformType']?.toString().toLowerCase() ?? '';
+    final platform = device['platform']?.toString().toLowerCase() ?? '';
+    final targetPlatform =
+        device['targetPlatform']?.toString().toLowerCase() ?? '';
+
+    final iosLikePlatform =
+        platform == 'ios' || targetPlatform.startsWith('ios');
+
+    return isEmulator &&
+        (category == 'mobile' || platformType == 'mobile') &&
+        iosLikePlatform;
+  }
+
+  bool _isMacOsDesktopDevice(Map<String, dynamic> device) {
+    final category = device['category']?.toString().toLowerCase() ?? '';
+    final platformType = device['platformType']?.toString().toLowerCase() ?? '';
+    final platform = device['platform']?.toString().toLowerCase() ?? '';
+    final targetPlatform =
+        device['targetPlatform']?.toString().toLowerCase() ?? '';
+
+    return category == 'desktop' &&
+        (platformType == 'desktop' ||
+            platform == 'darwin' ||
+            platform == 'macos' ||
+            targetPlatform.startsWith('darwin') ||
+            targetPlatform.startsWith('macos'));
   }
 
   Future<void> _updateToolbar() async {

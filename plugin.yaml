@@ -13,8 +13,7 @@ permissions:
       - flutter
       - dart
       - fvm
-      - sh
-      - bash
+      - open
 
 configuration:
   - key: flutter.hotReloadOnSave

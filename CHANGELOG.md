@@ -1,3 +1,8 @@
+## 1.6.0 (2026-05-02)
+
+### 🚀 New Features
+- Add an option to Start iOS Simulator in Device Picker UI (many thanks to [@chungxon](https://github.com/chungxon) for your contribution).
+
 ## 1.5.0 (2026-04-22)
 
 _This release requires Lumide version >= 0.2.0._
