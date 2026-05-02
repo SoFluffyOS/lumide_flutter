@@ -247,6 +247,7 @@ class DeviceService {
   }
 
   bool _isIosSimulatorDevice(Map<String, dynamic> device) {
+    final isEmulator = device['emulator'] == true;
     final category = device['category']?.toString().toLowerCase() ?? '';
     final platformType = device['platformType']?.toString().toLowerCase() ?? '';
     final platform = device['platform']?.toString().toLowerCase() ?? '';
@@ -256,7 +257,8 @@ class DeviceService {
     final iosLikePlatform =
         platform == 'ios' || targetPlatform.startsWith('ios');
 
-    return (category == 'mobile' || platformType == 'mobile') &&
+    return isEmulator &&
+        (category == 'mobile' || platformType == 'mobile') &&
         iosLikePlatform;
   }
 
