@@ -148,8 +148,8 @@ class DeviceService {
 
     try {
       final result = await context.shell.run(
-        'sh',
-        ['-lc', 'open -a Simulator'],
+        'open',
+        ['-a', 'Simulator'],
       );
       if (result.exitCode != 0) {
         final stderr = result.stderr.toString().trim();
