@@ -90,6 +90,12 @@ class DaemonService {
     } finally {
       _isStarting = false;
     }
+
+    try {
+      await ready;
+    } catch (e) {
+      logService.error('Flutter daemon failed to become ready', e);
+    }
   }
 
   void _handleStdoutLine(String line) {

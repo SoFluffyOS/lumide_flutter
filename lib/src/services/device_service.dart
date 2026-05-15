@@ -47,7 +47,11 @@ class DeviceService {
       }
     });
 
-    await daemonService.enableDevicePolling();
+    try {
+      await daemonService.enableDevicePolling();
+    } catch (e) {
+      io.stderr.writeln('Failed to enable device polling: $e');
+    }
   }
 
   Future<void> refreshDevices() async {
