@@ -111,9 +111,14 @@ class ProjectService {
       final parsed = Uri.parse(uri);
       final absolutePath = parsed.toRealPath();
 
-      // Skip cache/build/hidden directories
+      // Skip cache, build, hidden, and generated platform directories.
+      // Note: startsWith('.') already covers .dart_tool, .fvm, .symlinks,
+      // .plugin_symlinks, etc.
       final parts = path.split(absolutePath);
-      if (parts.any((part) => part.startsWith('.') || part == 'build')) {
+      if (parts.any((part) =>
+          part.startsWith('.') ||
+          part == 'build' ||
+          part == 'ephemeral')) {
         continue;
       }
 

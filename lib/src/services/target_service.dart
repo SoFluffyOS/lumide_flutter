@@ -72,64 +72,53 @@ class TargetService {
     await _updateToolbar();
   }
 
+  /// Walks up from [filePath] towards [root] looking for the nearest
+  /// `pubspec.yaml` and returns that directory's basename as the package name.
+  Future<String> _findPackageName(String filePath, String root) async {
+    var curr = path.dirname(filePath);
+    while (curr != root && curr.length >= root.length) {
+      final pubspecPath = path.join(curr, 'pubspec.yaml');
+      if (await context.fs.exists(pubspecPath)) {
+        return path.basename(curr);
+      }
+      curr = path.dirname(curr);
+    }
+    return path.basename(root);
+  }
+
   Future<void> selectTarget(
       [Map<String, int>? position, bool forceRefresh = false]) async {
-    final items = <QuickPickItem>[];
-    String? root;
+    // Loop instead of recursion so "Refresh" doesn't grow the stack.
+    var refresh = forceRefresh;
+    while (true) {
+      final items = <QuickPickItem>[];
+      String? root;
 
-    try {
-      root = await projectService.getProjectRoot();
-    } catch (_) {}
+      try {
+        root = await projectService.getProjectRoot();
+      } catch (_) {}
 
-    if (root != null) {
-      final mainDartFiles =
-          await projectService.findAllTargets(forceRefresh: forceRefresh);
+      if (root != null) {
+        final mainDartFiles =
+            await projectService.findAllTargets(forceRefresh: refresh);
 
-      for (final absolutePath in mainDartFiles) {
-        final rel = path.relative(absolutePath, from: root);
-        String packageName = '';
+        for (final absolutePath in mainDartFiles) {
+          final rel = path.relative(absolutePath, from: root);
+          final packageName = await _findPackageName(absolutePath, root);
 
-        // Find nearest pubspec.yaml to extract package name directory
-        var curr = path.dirname(absolutePath);
-        while (curr != root && curr.length >= root.length) {
-          final pubspecPath = path.join(curr, 'pubspec.yaml');
-          if (await context.fs.exists(pubspecPath)) {
-            packageName = path.basename(curr);
-            break;
-          }
-          curr = path.dirname(curr);
+          items.add(QuickPickItem(
+            label: path.basename(absolutePath),
+            description: packageName,
+            tooltip: rel,
+            payload: absolutePath,
+            icon: iconCode,
+          ));
         }
 
-        if (packageName.isEmpty) {
-          packageName = path.basename(root);
-        }
-
-        items.add(QuickPickItem(
-          label: path.basename(absolutePath),
-          description: packageName,
-          tooltip: rel,
-          payload: absolutePath,
-          icon: iconCode,
-        ));
-      }
-
-      if (_selectedTarget != null) {
-        final rel = path.relative(_selectedTarget!, from: root);
-        if (!items.any((i) => i.payload == _selectedTarget)) {
-          String packageName = '';
-          var curr = path.dirname(_selectedTarget!);
-          while (curr != root && curr.length >= root.length) {
-            final pubspecPath = path.join(curr, 'pubspec.yaml');
-            if (await context.fs.exists(pubspecPath)) {
-              packageName = path.basename(curr);
-              break;
-            }
-            curr = path.dirname(curr);
-          }
-
-          if (packageName.isEmpty) {
-            packageName = path.basename(root);
-          }
+        if (_selectedTarget != null &&
+            !items.any((i) => i.payload == _selectedTarget)) {
+          final rel = path.relative(_selectedTarget!, from: root);
+          final packageName = await _findPackageName(_selectedTarget!, root);
 
           items.add(QuickPickItem(
             label: path.basename(_selectedTarget!),
@@ -140,63 +129,64 @@ class TargetService {
           ));
         }
       }
-    }
 
-    items.add(const QuickPickItem(label: '', isSeparator: true));
-    items.add(const QuickPickItem(
-      label: 'Enter custom target path...',
-      detail: 'Provide a relative path to your Dart entry point',
-      payload: 'custom',
-      icon: iconEdit,
-    ));
-    items.add(const QuickPickItem(
-      label: 'Refresh Targets...',
-      detail: 'Scan for new dart targets natively',
-      payload: 'refresh',
-      icon: iconRefresh,
-    ));
+      items.add(const QuickPickItem(label: '', isSeparator: true));
+      items.add(const QuickPickItem(
+        label: 'Enter custom target path...',
+        detail: 'Provide a relative path to your Dart entry point',
+        payload: 'custom',
+        icon: iconEdit,
+      ));
+      items.add(const QuickPickItem(
+        label: 'Refresh Targets...',
+        detail: 'Scan for new dart targets natively',
+        payload: 'refresh',
+        icon: iconRefresh,
+      ));
 
-    final selected = await context.window.showQuickPick(
-      items,
-      placeholder: 'Select run target entry point',
-      position: position,
-    );
+      final selected = await context.window.showQuickPick(
+        items,
+        placeholder: 'Select run target entry point',
+        position: position,
+      );
 
-    if (selected != null) {
-      final payload = selected.payload as String;
-      if (payload == 'refresh') {
-        await context.window.showMessage('Scanning for flutter targets');
-        await selectTarget(position, true); // Re-open picker recursively
-        return;
-      } else if (payload == 'custom') {
-        final customPath = await context.window.showInputBox(
-          prompt:
-              'Enter relative path to Dart entry point (e.g. lib/main.dart)',
-        );
-        if (customPath != null && customPath.isNotEmpty) {
-          if (root != null) {
-            String fullPath = path.isAbsolute(customPath)
-                ? customPath
-                : path.join(root, customPath);
-            if (await context.fs.exists(fullPath)) {
-              _selectedTarget = fullPath;
+      if (selected != null) {
+        final payload = selected.payload as String;
+        if (payload == 'refresh') {
+          await context.window.showMessage('Scanning for flutter targets');
+          refresh = true;
+          continue; // Re-open picker via loop iteration
+        } else if (payload == 'custom') {
+          final customPath = await context.window.showInputBox(
+            prompt:
+                'Enter relative path to Dart entry point (e.g. lib/main.dart)',
+          );
+          if (customPath != null && customPath.isNotEmpty) {
+            if (root != null) {
+              String fullPath = path.isAbsolute(customPath)
+                  ? customPath
+                  : path.join(root, customPath);
+              if (await context.fs.exists(fullPath)) {
+                _selectedTarget = fullPath;
+              } else {
+                await context.window.showMessage(
+                  'File not found: $fullPath',
+                  type: MessageType.error,
+                );
+                return;
+              }
             } else {
-              await context.window.showMessage(
-                'File not found: $fullPath',
-                type: MessageType.error,
-              );
-              return;
+              // Cannot validate file if no workspace root.
+              _selectedTarget = customPath;
             }
-          } else {
-            // Cannot validate file if no workspace root.
-            _selectedTarget = customPath;
           }
+        } else {
+          _selectedTarget = payload;
         }
-      } else {
-        _selectedTarget = payload;
+        await _saveCache();
+        await _updateToolbar();
       }
-      await _saveCache();
-      await _updateToolbar();
+      return;
     }
   }
 
