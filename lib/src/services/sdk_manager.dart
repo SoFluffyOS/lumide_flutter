@@ -62,8 +62,35 @@ class SdkManager {
       final whichCmd = Platform.isWindows ? 'where' : 'which';
       final result = await context.shell.run(whichCmd, [command]);
       if (result.exitCode == 0) {
-        final resolved = result.stdout.toString().trim().split('\n').first;
-        if (resolved.isNotEmpty) return resolved;
+        final lines = result.stdout
+            .toString()
+            .trim()
+            .split('\n')
+            .map((l) => l.trim())
+            .where((l) => l.isNotEmpty)
+            .toList();
+
+        if (lines.isEmpty) return null;
+
+        // On Windows, `where` may return an extensionless bash script
+        // (e.g. `flutter`) alongside or instead of the actual `.bat`/`.cmd`/
+        // `.exe`. Always prefer a Windows-executable variant — even when
+        // there's only one result, because the extensionless one is a bash
+        // script that Process.run cannot execute on Windows.
+        if (Platform.isWindows) {
+          const winExts = ['.exe', '.bat', '.cmd'];
+          for (final line in lines) {
+            final lower = line.toLowerCase();
+            if (winExts.any((ext) => lower.endsWith(ext))) {
+              return line;
+            }
+          }
+          // No Windows-executable found — return null so the caller can
+          // fall back to the bare command name (resolved via PATHEXT).
+          return null;
+        }
+
+        return lines.first;
       }
     } catch (_) {}
     return null;
