@@ -5,6 +5,7 @@
 
 ### 🐞 Bug Fixes
 - Fix plugin getting stuck in `Booting` state.
+- Fix DevTools panel not clean up properly.
 
 ## 1.6.0 (2026-05-02)
 
