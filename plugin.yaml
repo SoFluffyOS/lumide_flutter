@@ -13,6 +13,9 @@ permissions:
       - flutter
       - dart
       - fvm
+      - puro
+      - which
+      - where
       - open
 
 configuration:
