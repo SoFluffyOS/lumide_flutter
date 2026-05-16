@@ -1,3 +1,11 @@
+## 1.7.0 (2026-05-16)
+
+### ✨Enhancements
+- Improve Flutter executablele detection logic.
+
+### 🐞 Bug Fixes
+- Fix plugin getting stuck in `Booting` state.
+
 ## 1.6.0 (2026-05-02)
 
 ### 🚀 New Features

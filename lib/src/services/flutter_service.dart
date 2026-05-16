@@ -16,7 +16,10 @@ class FlutterService {
 
   Future<bool> checkSdk() async {
     try {
-      final result = await context.shell.run('flutter', ['--version']);
+      final root = await projectService.getProjectRoot();
+      final cmd = await sdkManager.getFlutterCommand(root);
+      final result =
+          await context.shell.run(cmd.first, [...cmd.sublist(1), '--version']);
       return result.exitCode == 0;
     } catch (_) {
       return false;
