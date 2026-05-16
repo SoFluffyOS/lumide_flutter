@@ -88,6 +88,8 @@ class RunService {
   int? _devToolsServerPort;
   String? _wsUri;
 
+  LumideWebviewPanel? _devToolsPanel;
+
   String? _activeAppId;
   String? _activeIsolateId;
   _FlutterLaunchMode? _launchMode;
@@ -387,6 +389,9 @@ class RunService {
     _stderrSub = null;
     await _disconnectVmService();
     await _showRunControls(isRunning: false);
+
+    await _devToolsPanel?.dispose();
+    _devToolsPanel = null;
 
     if (wasDebug) {
       await _endDebugSession(
@@ -1814,7 +1819,8 @@ class RunService {
 
     final url = await _getOrCreateDevToolsUrl();
     if (url != null) {
-      await context.window.createWebviewPanel(
+      await _devToolsPanel?.dispose();
+      _devToolsPanel = await context.window.createWebviewPanel(
         'flutter.devtools',
         'Flutter DevTools',
         options: {'url': url},
@@ -1886,6 +1892,9 @@ class RunService {
       _hasDebugSession = false;
     }
     await _channel?.dispose();
+
+    await _devToolsPanel?.dispose();
+    _devToolsPanel = null;
   }
 
   Future<void> _logInfo(String message) async {
