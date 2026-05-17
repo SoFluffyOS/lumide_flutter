@@ -1,3 +1,11 @@
+## 1.7.1 (2026-05-17)
+
+### ✨Enhancements
+- Improve target detection performance.
+
+### 🐞 Bug Fixes
+- Fix `flutter` executable not found on Windows.
+
 ## 1.7.0 (2026-05-16)
 
 ### ✨Enhancements
