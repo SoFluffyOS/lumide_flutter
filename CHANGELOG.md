@@ -1,4 +1,4 @@
-## 1.8.0 (Unreleased)
+## 1.8.0+1 (2026-06-14)
 
 > This release requires Lumide 0.12.0 and later. Do not update if you are using older versions.
 
