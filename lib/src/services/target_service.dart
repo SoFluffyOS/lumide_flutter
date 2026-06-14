@@ -11,6 +11,7 @@ class TargetService {
 
   String? _selectedTarget;
   bool _isLoading = false;
+  Future<void> Function()? onDidChange;
 
   TargetService(this.context, this.projectService);
 
@@ -25,11 +26,11 @@ class TargetService {
 
   Future<void> _loadCache() async {
     final cachePath = await _getCachePath();
-    if (cachePath != null && await context.fs.exists(cachePath)) {
+    if (cachePath != null && io.File(cachePath).existsSync()) {
       try {
-        final cached = await context.fs.readString(cachePath);
+        final cached = await io.File(cachePath).readAsString();
         final trim = cached.trim();
-        if (trim.isNotEmpty && await context.fs.exists(trim)) {
+        if (trim.isNotEmpty && io.File(trim).existsSync()) {
           _selectedTarget = trim;
         }
       } catch (_) {}
@@ -42,17 +43,17 @@ class TargetService {
     if (cachePath != null) {
       try {
         final dir = io.Directory(path.dirname(cachePath));
-        if (!await dir.exists()) {
-          await dir.create(recursive: true);
+        if (!dir.existsSync()) {
+          dir.createSync(recursive: true);
         }
-        await context.fs.writeString(cachePath, _selectedTarget!);
+        await io.File(cachePath).writeAsString(_selectedTarget!);
       } catch (_) {}
     }
   }
 
   Future<void> init() async {
     _isLoading = true;
-    await _updateToolbar();
+    await _notifyChanged();
 
     try {
       await _loadCache();
@@ -69,7 +70,7 @@ class TargetService {
     }
 
     _isLoading = false;
-    await _updateToolbar();
+    await _notifyChanged();
   }
 
   /// Walks up from [filePath] towards [root] looking for the nearest
@@ -105,13 +106,16 @@ class TargetService {
         for (final absolutePath in mainDartFiles) {
           final rel = path.relative(absolutePath, from: root);
           final packageName = await _findPackageName(absolutePath, root);
+          final targetIcon = await getTargetIcon(absolutePath);
 
           items.add(QuickPickItem(
             label: path.basename(absolutePath),
             description: packageName,
             tooltip: rel,
             payload: absolutePath,
-            icon: iconCode,
+            icon: targetIcon.icon,
+            iconPath: targetIcon.iconPath,
+            noTint: targetIcon.noTint,
           ));
         }
 
@@ -119,27 +123,37 @@ class TargetService {
             !items.any((i) => i.payload == _selectedTarget)) {
           final rel = path.relative(_selectedTarget!, from: root);
           final packageName = await _findPackageName(_selectedTarget!, root);
+          final targetIcon = await getTargetIcon(_selectedTarget!);
 
           items.add(QuickPickItem(
             label: path.basename(_selectedTarget!),
             description: packageName,
             tooltip: rel,
             payload: _selectedTarget,
-            icon: iconCode,
+            icon: targetIcon.icon,
+            iconPath: targetIcon.iconPath,
+            noTint: targetIcon.noTint,
           ));
         }
       }
 
-      items.add(const QuickPickItem(label: '', isSeparator: true));
+      if (items.isNotEmpty) {
+        items.add(const QuickPickItem(label: '', isSeparator: true));
+      }
       items.add(const QuickPickItem(
         label: 'Enter custom target path...',
-        detail: 'Provide a relative path to your Dart entry point',
+        description: 'Custom path',
+        detail: 'Relative Dart entry point path',
+        tooltip:
+            'Enter a relative path to a Dart entry point, for example lib/main.dart.',
         payload: 'custom',
         icon: iconEdit,
       ));
       items.add(const QuickPickItem(
         label: 'Refresh Targets...',
-        detail: 'Scan for new dart targets natively',
+        description: 'Rescan',
+        detail: 'Scan for Dart entry points',
+        tooltip: 'Scan the workspace for newly added Dart entry point files.',
         payload: 'refresh',
         icon: iconRefresh,
       ));
@@ -157,81 +171,204 @@ class TargetService {
           refresh = true;
           continue; // Re-open picker via loop iteration
         } else if (payload == 'custom') {
-          final customPath = await context.window.showInputBox(
-            prompt:
-                'Enter relative path to Dart entry point (e.g. lib/main.dart)',
-          );
-          if (customPath != null && customPath.isNotEmpty) {
-            if (root != null) {
-              String fullPath = path.isAbsolute(customPath)
-                  ? customPath
-                  : path.join(root, customPath);
-              if (await context.fs.exists(fullPath)) {
-                _selectedTarget = fullPath;
-              } else {
-                await context.window.showMessage(
-                  'File not found: $fullPath',
-                  type: MessageType.error,
-                );
-                return;
-              }
-            } else {
-              // Cannot validate file if no workspace root.
-              _selectedTarget = customPath;
-            }
+          final selectedTarget = await setCustomTarget();
+          if (selectedTarget == null) {
+            return;
           }
         } else {
           _selectedTarget = payload;
         }
         await _saveCache();
-        await _updateToolbar();
+        await _notifyChanged();
       }
       return;
     }
   }
 
-  Future<void> _updateToolbar() async {
-    if (_isLoading) {
-      await context.toolbar.registerItem(
-        id: cmdFlutterTarget,
-        icon: '',
-        label: 'Detecting...',
-        tooltip: 'Detecting run targets...',
-        alignment: ToolbarItemAlignment.right,
-        priority: 190, // Next to device picker (200)
+  Future<List<String>> launchTargets({bool forceRefresh = false}) async {
+    String? root;
+    try {
+      root = await projectService.getProjectRoot();
+    } catch (_) {}
+
+    final targets = <String>[];
+    if (root != null) {
+      targets.addAll(
+        await projectService.findAllTargets(forceRefresh: forceRefresh),
       );
-      return;
     }
 
-    String label = 'Select Target';
-    String tooltip = 'Select Target Entry Point';
+    final selected = _selectedTarget;
+    if (selected != null && !targets.contains(selected)) {
+      targets.add(selected);
+    }
+
+    return targets;
+  }
+
+  Future<void> setSelectedTarget(String target) async {
+    _selectedTarget = target;
+    await _saveCache();
+    await _notifyChanged();
+  }
+
+  Future<String> displayLabelFor(String target) async {
+    return path.basename(target);
+  }
+
+  Future<String> displayTooltipFor(String target) async {
+    String? root;
+    try {
+      root = await projectService.getProjectRoot();
+    } catch (_) {}
+
+    if (root != null && path.isWithin(root, target)) {
+      return path.relative(target, from: root);
+    }
+
+    return 'Entry Point: $target';
+  }
+
+  Future<String> packageNameFor(String target) async {
+    try {
+      final root = await projectService.getProjectRoot();
+      return await _findPackageName(target, root);
+    } catch (_) {
+      return path.basename(path.dirname(target));
+    }
+  }
+
+  Future<String?> setCustomTarget([String? customPath]) async {
+    final input = customPath ??
+        await context.window.showOpenDialog(
+          title: 'Select Flutter Target',
+        );
+    if (input == null) return null;
+
+    final trimmed = input.trim();
+    if (trimmed.isEmpty) return null;
+
+    String? root;
+    try {
+      root = await projectService.getProjectRoot();
+    } catch (_) {}
+
+    if (root != null) {
+      final fullPath =
+          path.isAbsolute(trimmed) ? trimmed : path.join(root, trimmed);
+      if (io.File(fullPath).existsSync()) {
+        _selectedTarget = fullPath;
+        await _saveCache();
+        await _notifyChanged();
+        return fullPath;
+      }
+
+      await context.window.showMessage(
+        'File not found: $fullPath',
+        type: MessageType.error,
+      );
+      return null;
+    }
+
+    _selectedTarget = trimmed;
+    await _saveCache();
+    await _notifyChanged();
+    return trimmed;
+  }
+
+
+  Future<void> refreshTargets([Map<String, int>? position]) async {
+    _isLoading = true;
+    await _notifyChanged();
+
+    try {
+      await projectService.getProjectRoot();
+      await projectService.findAllTargets(forceRefresh: true);
+    } catch (_) {}
+
+    _isLoading = false;
+    await _notifyChanged();
+  }
+
+  Future<void> _notifyChanged() async {
+    final callback = onDidChange;
+    if (callback != null) {
+      await callback();
+    }
+  }
+
+  Future<String> displayLabel() async {
+    if (_isLoading) {
+      return 'Detecting...';
+    }
 
     if (_selectedTarget != null) {
-      label = path.basename(_selectedTarget!);
-
-      String? root;
-      try {
-        root = await projectService.getProjectRoot();
-      } catch (_) {}
-
-      if (root != null && path.isWithin(root, _selectedTarget!)) {
-        tooltip = path.relative(_selectedTarget!, from: root);
-      } else {
-        tooltip = 'Entry Point: $_selectedTarget';
-      }
+      return path.basename(_selectedTarget!);
     }
 
-    await context.toolbar.registerItem(
-      id: cmdFlutterTarget,
-      icon: '',
-      label: label,
-      tooltip: tooltip,
-      alignment: ToolbarItemAlignment.right,
-      priority: 190,
-    );
+    return 'Select Target';
+  }
+
+  Future<String> displayTooltip() async {
+    if (_isLoading) {
+      return 'Detecting run targets...';
+    }
+
+    if (_selectedTarget == null) {
+      return 'Select Target Entry Point';
+    }
+
+    String? root;
+    try {
+      root = await projectService.getProjectRoot();
+    } catch (_) {}
+
+    if (root != null && path.isWithin(root, _selectedTarget!)) {
+      return path.relative(_selectedTarget!, from: root);
+    }
+
+    return 'Entry Point: $_selectedTarget';
   }
 
   String? get selectedTarget => _selectedTarget;
+
+  Future<({String? icon, String? iconPath, bool noTint})> getTargetIcon(
+      String targetPath) async {
+    final pubspecPath = await _findPubspecPath(targetPath);
+    if (pubspecPath == null) {
+      return (icon: null, iconPath: null, noTint: false);
+    }
+    try {
+      final content = await io.File(pubspecPath).readAsString();
+      final isFlutter =
+          content.contains('sdk: flutter') || content.contains('flutter:');
+      if (isFlutter) {
+        return (icon: null, iconPath: 'assets/icon_flutter.png', noTint: true);
+      }
+    } catch (_) {}
+    return (icon: null, iconPath: 'assets/icon_dart.png', noTint: true);
+  }
+
+  Future<String?> _findPubspecPath(String filePath) async {
+    try {
+      final root = await projectService.getProjectRoot();
+      var curr = path.dirname(filePath);
+      while (curr.length >= root.length) {
+        final pubspecPath = path.join(curr, 'pubspec.yaml');
+        if (io.File(pubspecPath).existsSync()) {
+          return pubspecPath;
+        }
+        final parent = path.dirname(curr);
+        if (parent == curr) break;
+        curr = parent;
+      }
+      final rootPubspec = path.join(root, 'pubspec.yaml');
+      if (io.File(rootPubspec).existsSync()) {
+        return rootPubspec;
+      }
+    } catch (_) {}
+    return null;
+  }
 
   Future<void> dispose() async {
     await context.toolbar.unregisterItem(cmdFlutterTarget);

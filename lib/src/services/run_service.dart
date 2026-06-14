@@ -16,6 +16,7 @@ import 'package:vm_service/vm_service_io.dart';
 enum _FlutterLaunchMode {
   run,
   debug,
+  attach,
 }
 
 class _InstalledVmBreakpoint {
@@ -74,7 +75,10 @@ class RunService {
   bool _isRunning = false;
   bool get isRunning => _isRunning;
 
-  bool get _isDebugMode => _launchMode == _FlutterLaunchMode.debug;
+  bool get _isDebugMode =>
+      _launchMode == _FlutterLaunchMode.debug ||
+      _launchMode == _FlutterLaunchMode.attach;
+  bool get _isAttachMode => _launchMode == _FlutterLaunchMode.attach;
 
   bool _isConnectingToVmService = false;
 
@@ -92,7 +96,12 @@ class RunService {
 
   String? _activeAppId;
   String? _activeIsolateId;
+  String? _selectedFlavor;
+  String? _selectedBuildMode;
+  List<String> _customToolArgs = const [];
   _FlutterLaunchMode? _launchMode;
+  LumideLaunchKind? _activeLaunchKind;
+  String? _activeLaunchConfigurationId;
   bool _hasDebugSession = false;
   bool _didReceiveInitialBreakpointRequest = false;
   bool _breakpointsSyncedForActiveIsolate = false;
@@ -154,6 +163,25 @@ class RunService {
     context.debug.onGetVariables(_handleDebugGetVariables);
     context.debug.onEvaluate(_handleDebugEvaluate);
 
+    await _loadLaunchOptionCaches();
+
+    context.launch.onResolveConfigurations(_resolveLaunchConfigurations);
+    context.launch.onConfigure(_handleConfigureRequest);
+    context.launch.onLaunch(_handleLaunchRequest);
+    await context.launch.registerProvider(
+      id: launchProviderFlutter,
+      title: 'Flutter',
+      workspacePatterns: const ['pubspec.yaml'],
+      kinds: const [
+        LumideLaunchKind.run,
+        LumideLaunchKind.debug,
+        LumideLaunchKind.attach,
+      ],
+      icon: iconPlay,
+      priority: 100,
+    );
+    await _updateLaunchConfigurations();
+
     await _showRunControls(isRunning: false);
 
     context.workspace.onDidSaveTextDocument((uri) async {
@@ -172,9 +200,6 @@ class RunService {
 
   Future<void> _showRunControls({required bool isRunning}) async {
     if (isRunning) {
-      await context.toolbar.unregisterItem(cmdFlutterRun);
-      await context.toolbar.unregisterItem(cmdFlutterDebug);
-
       await context.toolbar.registerItem(
         id: cmdFlutterHotReload,
         icon: iconZap,
@@ -189,34 +214,214 @@ class RunService {
         alignment: ToolbarItemAlignment.right,
         priority: 99,
       );
-      await context.toolbar.registerItem(
-        id: cmdFlutterStop,
-        icon: iconStop,
-        tooltip: 'Stop App',
-        alignment: ToolbarItemAlignment.right,
-        priority: 98,
-      );
       return;
     }
 
     await context.toolbar.unregisterItem(cmdFlutterStop);
     await context.toolbar.unregisterItem(cmdFlutterHotReload);
     await context.toolbar.unregisterItem(cmdFlutterHotRestart);
+  }
 
-    await context.toolbar.registerItem(
-      id: cmdFlutterRun,
-      icon: iconPlay,
-      tooltip: 'Run Flutter App',
-      alignment: ToolbarItemAlignment.right,
-      priority: 100,
+  Future<List<LumideLaunchConfiguration>> _resolveLaunchConfigurations(
+    LumideLaunchResolveRequest request,
+  ) async {
+    if (request.providerId != launchProviderFlutter) return const [];
+    return await _currentLaunchConfigurations();
+  }
+
+  Future<void> _updateLaunchConfigurations() async {
+    await context.launch.updateConfigurations(
+      launchProviderFlutter,
+      await _currentLaunchConfigurations(),
     );
-    await context.toolbar.registerItem(
-      id: cmdFlutterDebug,
-      icon: iconBug,
-      tooltip: 'Debug Flutter App',
-      alignment: ToolbarItemAlignment.right,
-      priority: 99,
+  }
+
+  Future<void> refreshLaunchConfigurations() async {
+    await _updateLaunchConfigurations();
+  }
+
+  Future<List<LumideLaunchConfiguration>> _currentLaunchConfigurations() async {
+    final targets = await targetService.launchTargets();
+    final configs = <LumideLaunchConfiguration>[];
+    if (targets.isEmpty) {
+      configs.add(await _buildLaunchConfiguration(null));
+    } else {
+      for (final target in targets) {
+        configs.add(await _buildLaunchConfiguration(target));
+      }
+    }
+
+    configs.addAll([
+      const LumideLaunchConfiguration(
+        id: 'customTarget',
+        label: 'Custom Target...',
+        isAction: true,
+        icon: iconEdit,
+      ),
+      const LumideLaunchConfiguration(
+        id: 'refreshTargets',
+        label: 'Refresh Targets',
+        isAction: true,
+        icon: iconRefresh,
+      ),
+    ]);
+
+    return configs;
+  }
+
+  Future<LumideLaunchConfiguration> _currentLaunchConfiguration() async {
+    return await _buildLaunchConfiguration(targetService.selectedTarget);
+  }
+
+  Future<LumideLaunchConfiguration> _buildLaunchConfiguration(
+    String? target,
+  ) async {
+    final selectedTarget = targetService.selectedTarget;
+    final targetLabel = target == null
+        ? await targetService.displayLabel()
+        : await targetService.displayLabelFor(target);
+    final targetTooltip = target == null
+        ? await targetService.displayTooltip()
+        : await targetService.displayTooltipFor(target);
+    final deviceId = deviceService.selectedDeviceId;
+    final flavor = await _configuredFlavor();
+    final customArgs = _customToolArgs;
+    final resolvedTarget = target ?? selectedTarget;
+    String? configIcon;
+    String? configIconPath;
+    bool configNoTint = false;
+    if (resolvedTarget != null) {
+      final targetIcon = await targetService.getTargetIcon(resolvedTarget);
+      configIcon = targetIcon.icon;
+      configIconPath = targetIcon.iconPath;
+      configNoTint = targetIcon.noTint;
+    }
+
+    return LumideLaunchConfiguration(
+      id: target ?? launchConfigCurrent,
+      label: targetLabel,
+      kind: LumideLaunchKind.run,
+      description: target == null
+          ? deviceId ?? 'No device selected'
+          : await targetService.packageNameFor(target),
+      detail:
+          _configurationDetail(target, flavor, _selectedBuildMode, customArgs),
+      icon: configIconPath != null ? null : (configIcon ?? iconTarget),
+      iconPath: configIconPath,
+      noTint: configNoTint,
+      isDefault:
+          selectedTarget == null ? target == null : target == selectedTarget,
+      options: [
+        LumideLaunchOption(
+          id: 'flavor',
+          label: 'Set Flavor',
+          value: StringLaunchValue(flavor ?? ''),
+          placeholder: 'staging',
+          icon: 'layers',
+        ),
+        LumideLaunchOption(
+          id: 'buildMode',
+          label: 'Build Mode',
+          value: StringLaunchValue(_selectedBuildMode ?? 'debug'),
+          placeholder: 'debug',
+          icon: 'layers',
+          // Disable during a running debug/attach session (can't change build mode at runtime)
+          enabled: !_isRunning || !_isDebugMode,
+          description: switch (_isRunning && _isDebugMode) {
+            true => 'Locked during debug',
+            false => 'Debug, profile, or release',
+          },
+          choices: const [
+            LumideLaunchOptionChoice(
+              value: 'debug',
+              label: 'Debug (default)',
+              description: 'Hot reload',
+            ),
+            LumideLaunchOptionChoice(
+              value: 'profile',
+              label: 'Profile',
+              description: '--profile',
+            ),
+            LumideLaunchOptionChoice(
+              value: 'release',
+              label: 'Release',
+              description: '--release',
+            ),
+          ],
+        ),
+        LumideLaunchOption(
+          id: 'toolArgs',
+          label: 'Custom Arguments',
+          value: StringLaunchValue(_formatCommandArgs(customArgs)),
+          placeholder: '--dart-define API_URL=https://example.com',
+          icon: iconTerminal,
+        ),
+      ],
+      arguments: {
+        'canLaunch': deviceId != null,
+        'targetLabel': targetLabel,
+        'targetTooltip': targetTooltip,
+        'deviceLabel': deviceService.displayLabel,
+        'deviceTooltip': deviceService.displayTooltip,
+        'deviceIcon': deviceService.displayIcon,
+        if (target != null) 'target': target,
+        if (deviceId != null) 'deviceId': deviceId,
+        if (flavor != null) 'flavor': flavor,
+        if (_selectedBuildMode != null) 'buildMode': _selectedBuildMode,
+        if (customArgs.isNotEmpty) 'toolArgs': customArgs,
+      },
     );
+  }
+
+  Future<LumideLaunchConfiguration?> _handleConfigureRequest(
+    LumideLaunchConfigureRequest request,
+  ) async {
+    if (request.providerId != launchProviderFlutter) return null;
+
+    switch (request.actionId) {
+      case 'target':
+        await targetService.selectTarget(request.position);
+        return await _currentLaunchConfiguration();
+      case 'selectConfiguration':
+        if (request.configuration?.arguments['target']
+            case final String target) {
+          await targetService.setSelectedTarget(target);
+        }
+        return await _currentLaunchConfiguration();
+      case 'device':
+        await deviceService.selectDevice(request.position);
+        return await _currentLaunchConfiguration();
+      case 'flavor':
+        await setFlavor(request.value?.toString());
+        return await _currentLaunchConfiguration();
+      case 'buildMode':
+        await setBuildMode(request.value?.toString(), request.position);
+        return await _currentLaunchConfiguration();
+      case 'toolArgs':
+        await setCustomToolArgs(request.value?.toString());
+        return await _currentLaunchConfiguration();
+      case 'customTarget':
+        await targetService.setCustomTarget(request.value?.toString());
+        return await _currentLaunchConfiguration();
+      case 'refreshTargets':
+        await targetService.refreshTargets(request.position);
+        return await _currentLaunchConfiguration();
+      case 'stop':
+        await stop();
+        return await _currentLaunchConfiguration();
+      default:
+        return await _currentLaunchConfiguration();
+    }
+  }
+
+  Future<void> _handleLaunchRequest(LumideLaunchRequest request) async {
+    if (request.providerId != launchProviderFlutter) return;
+    final mode = switch (request.kind) {
+      LumideLaunchKind.debug => _FlutterLaunchMode.debug,
+      LumideLaunchKind.attach => _FlutterLaunchMode.attach,
+      _ => _FlutterLaunchMode.run,
+    };
+    await _launch(mode, configuration: request.configuration);
   }
 
   Future<void> run() async {
@@ -227,7 +432,126 @@ class RunService {
     await _launch(_FlutterLaunchMode.debug);
   }
 
-  Future<void> _launch(_FlutterLaunchMode mode) async {
+  Future<void> attach() async {
+    await _launch(_FlutterLaunchMode.attach);
+  }
+
+  Future<void> setFlavor([String? flavor]) async {
+    final input = flavor ??
+        await context.window.showInputBox(
+          title: 'Flutter Flavor',
+          prompt: 'Enter a Flutter flavor name. Leave empty to clear.',
+          value: await _configuredFlavor() ?? '',
+          placeHolder: 'staging',
+        );
+    if (input == null) return;
+
+    final trimmed = input.trim();
+    _selectedFlavor = trimmed.isEmpty ? null : trimmed;
+    await _saveFlavorCache();
+    await _updateLaunchConfigurations();
+    await context.window.showMessage(
+      trimmed.isEmpty
+          ? 'Flutter flavor cleared.'
+          : 'Flutter flavor set to $trimmed.',
+    );
+  }
+
+  Future<void> setBuildMode([String? mode, Map<String, int>? position]) async {
+    final options = [
+      const QuickPickItem(
+        label: 'Debug (default)',
+        description: 'Hot reload',
+        payload: 'debug',
+      ),
+      const QuickPickItem(
+        label: 'Profile',
+        description: '--profile',
+        payload: 'profile',
+      ),
+      const QuickPickItem(
+        label: 'Release',
+        description: '--release',
+        payload: 'release',
+      ),
+    ];
+
+    final selected = switch (mode) {
+      final val? => val,
+      _ => (await context.window.showQuickPick(
+          options,
+          placeholder: 'Select Flutter Build Mode',
+          position: position,
+        ))
+            ?.payload as String?,
+    };
+
+    if (selected == null) return;
+    final normalized = _normalizeBuildMode(selected);
+    if (normalized == null && selected.trim().isNotEmpty) {
+      await context.window.showMessage(
+        'Unsupported build mode: ${selected.trim()}',
+        type: MessageType.warning,
+      );
+      return;
+    }
+
+    _selectedBuildMode = switch (normalized) {
+      null || 'debug' => null,
+      final mode => mode,
+    };
+    await _saveBuildModeCache();
+    await _updateLaunchConfigurations();
+    final message = switch (normalized) {
+      null || 'debug' => 'Build mode set to debug.',
+      final mode => 'Build mode set to $mode.',
+    };
+    await context.window.showMessage(message);
+  }
+
+  Future<void> setCustomToolArgs([String? rawArgs]) async {
+    final input = rawArgs ??
+        await context.window.showInputBox(
+          title: 'Flutter Tool Args',
+          prompt:
+              'Extra args for flutter run/debug/attach. Reserved args: --machine, -d/--device-id, -t/--target.',
+          value: _formatCommandArgs(_customToolArgs),
+          placeHolder: '--dart-define API_URL=https://example.com',
+        );
+    if (input == null) return;
+
+    final parsed = _parseCommandArgs(input);
+    if (parsed == null) {
+      await context.window.showMessage(
+        'Could not parse Flutter args. Check quotes and try again.',
+        type: MessageType.error,
+      );
+      return;
+    }
+
+    final reserved = _firstReservedToolArg(parsed);
+    if (reserved != null) {
+      await context.window.showMessage(
+        '$reserved is controlled by Lumide. Use the toolbar device and target pickers instead.',
+        type: MessageType.error,
+      );
+      return;
+    }
+
+    _customToolArgs = parsed;
+    await _saveCustomToolArgsCache();
+    await _updateLaunchConfigurations();
+    await context.window.showMessage(
+      parsed.isEmpty
+          ? 'Flutter tool args cleared.'
+          : 'Flutter tool args updated.',
+    );
+  }
+
+  Future<void> _launch(
+    _FlutterLaunchMode mode, {
+    LumideLaunchConfiguration? configuration,
+  }) async {
     if (_isRunning) {
       await context.window.showMessage(
         'A Flutter app is already running. Stop it before starting a new one.',
@@ -247,7 +571,8 @@ class RunService {
       return;
     }
 
-    final deviceId = deviceService.selectedDeviceId;
+    final deviceId = _stringArgument(configuration, 'deviceId') ??
+        deviceService.selectedDeviceId;
     if (deviceId == null) {
       await context.window.showMessage(
         'No device selected. Use the device picker to choose one.',
@@ -257,14 +582,39 @@ class RunService {
     }
 
     final flutterCmd = await sdkManager.getFlutterCommand(root);
-    final args = ['run', '--machine'];
+    final args = [
+      mode == _FlutterLaunchMode.attach ? 'attach' : 'run',
+      '--machine',
+    ];
     if (mode == _FlutterLaunchMode.debug) {
       args.add('--start-paused');
     }
     args.addAll(['-d', deviceId]);
+    final flavor =
+        _stringArgument(configuration, 'flavor') ?? await _configuredFlavor();
+    if (mode != _FlutterLaunchMode.attach && flavor != null) {
+      args.addAll(['--flavor', flavor]);
+    }
+    args.addAll(_stringListArgument(configuration, 'toolArgs'));
+
+    // Build mode: only for `flutter run`, not debug (needs debug build) or attach
+    if (mode == _FlutterLaunchMode.run) {
+      final buildMode = _normalizeBuildMode(
+        _stringArgument(configuration, 'buildMode') ?? _selectedBuildMode,
+      );
+      if (buildMode == 'release') {
+        args.add('--release');
+      } else if (buildMode == 'profile') {
+        args.add('--profile');
+      }
+      // null / 'debug' = Flutter default, no flag needed
+    }
 
     String workingDirectory = root;
-    if (targetService.selectedTarget case final targetAbsolute?) {
+    final selectedTarget = _stringArgument(configuration, 'target') ??
+        targetService.selectedTarget;
+    if (selectedTarget != null) {
+      final targetAbsolute = selectedTarget;
       String packageRoot = path.dirname(targetAbsolute);
       while (packageRoot != root && packageRoot.length >= root.length) {
         final pubspecPath = path.join(packageRoot, 'pubspec.yaml');
@@ -283,9 +633,16 @@ class RunService {
       args.addAll(['-t', relativeTarget]);
     }
 
-    final title =
-        mode == _FlutterLaunchMode.debug ? 'Flutter Debug' : 'Flutter Run';
-    final action = mode == _FlutterLaunchMode.debug ? 'Debugging' : 'Running';
+    final title = switch (mode) {
+      _FlutterLaunchMode.attach => 'Flutter Attach',
+      _FlutterLaunchMode.debug => 'Flutter Debug',
+      _FlutterLaunchMode.run => 'Flutter Run',
+    };
+    final action = switch (mode) {
+      _FlutterLaunchMode.attach => 'Attaching',
+      _FlutterLaunchMode.debug => 'Debugging',
+      _FlutterLaunchMode.run => 'Running',
+    };
 
     try {
       await _prepareForLaunch(mode);
@@ -295,7 +652,7 @@ class RunService {
         title: title,
       );
       await _channel?.clear();
-      if (mode != _FlutterLaunchMode.debug) {
+      if (mode == _FlutterLaunchMode.run) {
         await _channel?.show();
       }
 
@@ -313,6 +670,19 @@ class RunService {
       );
 
       _isRunning = true;
+      _activeLaunchKind = switch (mode) {
+        _FlutterLaunchMode.attach => LumideLaunchKind.attach,
+        _FlutterLaunchMode.debug => LumideLaunchKind.debug,
+        _FlutterLaunchMode.run => LumideLaunchKind.run,
+      };
+      _activeLaunchConfigurationId = configuration?.id ?? launchConfigCurrent;
+      await context.launch.didStart(
+        LumideLaunchEvent(
+          providerId: launchProviderFlutter,
+          kind: _activeLaunchKind ?? LumideLaunchKind.run,
+          configurationId: _activeLaunchConfigurationId ?? launchConfigCurrent,
+        ),
+      );
       await _showRunControls(isRunning: true);
 
       if (_process case final proc?) {
@@ -340,6 +710,8 @@ class RunService {
       _process = null;
       _activeAppId = null;
       _launchMode = null;
+      _activeLaunchKind = null;
+      _activeLaunchConfigurationId = null;
       await _disconnectVmService();
       if (mode == _FlutterLaunchMode.debug) {
         await _endDebugSession(statusMessage: 'Failed to launch: $err');
@@ -348,6 +720,260 @@ class RunService {
       }
       await _showRunControls(isRunning: false);
     }
+  }
+
+  String? _stringArgument(
+    LumideLaunchConfiguration? configuration,
+    String key,
+  ) {
+    final value = configuration?.arguments[key];
+    if (value is String && value.isNotEmpty) return value;
+    return null;
+  }
+
+  List<String> _stringListArgument(
+    LumideLaunchConfiguration? configuration,
+    String key,
+  ) {
+    final value = configuration?.arguments[key];
+    if (value is List) {
+      return value.whereType<String>().where((arg) => arg.isNotEmpty).toList();
+    }
+    return _customToolArgs;
+  }
+
+  String? _configurationDetail(
+    String? target,
+    String? flavor,
+    String? buildMode,
+    List<String> toolArgs,
+  ) {
+    final parts = <String>[];
+    if (target != null) parts.add(target);
+    if (flavor != null) parts.add('Flavor: $flavor');
+    if (buildMode != null) parts.add('Mode: $buildMode');
+    if (toolArgs.isNotEmpty) parts.add('Args: ${_formatCommandArgs(toolArgs)}');
+    if (parts.isEmpty) return null;
+    return parts.join(' | ');
+  }
+
+
+  Future<String?> _configuredFlavor() async {
+    return _selectedFlavor;
+  }
+
+  Future<void> _loadLaunchOptionCaches() async {
+    await _loadFlavorCache();
+    await _loadCustomToolArgsCache();
+    await _loadBuildModeCache();
+  }
+
+  Future<String?> _flavorCachePath() async {
+    try {
+      final root = await projectService.getProjectRoot();
+      return path.join(root, '.dart_tool', 'lumide', 'flavor.txt');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _loadFlavorCache() async {
+    final cachePath = await _flavorCachePath();
+    if (cachePath == null || !await context.fs.exists(cachePath)) return;
+
+    try {
+      final cached = await context.fs.readString(cachePath);
+      final flavor = cached.trim();
+      _selectedFlavor = flavor.isEmpty ? null : flavor;
+    } catch (_) {}
+  }
+
+  Future<void> _saveFlavorCache() async {
+    final cachePath = await _flavorCachePath();
+    if (cachePath == null) return;
+
+    try {
+      final dir = Directory(path.dirname(cachePath));
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
+      await context.fs.writeString(cachePath, _selectedFlavor ?? '');
+    } catch (_) {}
+  }
+
+  Future<String?> _customToolArgsCachePath() async {
+    try {
+      final root = await projectService.getProjectRoot();
+      return path.join(root, '.dart_tool', 'lumide', 'tool_args.txt');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _loadCustomToolArgsCache() async {
+    final cachePath = await _customToolArgsCachePath();
+    if (cachePath == null || !await context.fs.exists(cachePath)) return;
+
+    try {
+      final cached = await context.fs.readString(cachePath);
+      try {
+        final decoded = jsonDecode(cached);
+        if (decoded is List) {
+          _customToolArgs = decoded
+              .whereType<String>()
+              .where((arg) => arg.isNotEmpty)
+              .toList();
+        }
+      } on FormatException {
+        _customToolArgs = _parseCommandArgs(cached.trim()) ?? const [];
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _saveCustomToolArgsCache() async {
+    final cachePath = await _customToolArgsCachePath();
+    if (cachePath == null) return;
+
+    try {
+      final dir = Directory(path.dirname(cachePath));
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
+      await context.fs.writeString(cachePath, jsonEncode(_customToolArgs));
+    } catch (_) {}
+  }
+
+  Future<String?> _buildModeCachePath() async {
+    try {
+      final root = await projectService.getProjectRoot();
+      return path.join(root, '.dart_tool', 'lumide', 'build_mode.txt');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _loadBuildModeCache() async {
+    final cachePath = await _buildModeCachePath();
+    if (cachePath == null || !await context.fs.exists(cachePath)) return;
+
+    try {
+      final cached = await context.fs.readString(cachePath);
+      final normalized = _normalizeBuildMode(cached);
+      _selectedBuildMode = switch (normalized) {
+        null || 'debug' => null,
+        final mode => mode,
+      };
+    } catch (_) {}
+  }
+
+  Future<void> _saveBuildModeCache() async {
+    final cachePath = await _buildModeCachePath();
+    if (cachePath == null) return;
+
+    try {
+      final dir = Directory(path.dirname(cachePath));
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
+      await context.fs.writeString(cachePath, _selectedBuildMode ?? '');
+    } catch (_) {}
+  }
+
+  String _formatCommandArgs(List<String> args) {
+    return args.map(_quoteCommandArg).join(' ');
+  }
+
+  String _quoteCommandArg(String arg) {
+    if (arg.isEmpty) return "''";
+    if (!arg.contains(RegExp(r'\s')) &&
+        !arg.contains('"') &&
+        !arg.contains("'") &&
+        !arg.contains('\\')) {
+      return arg;
+    }
+    return "'${arg.replaceAll("'", r"'\''")}'";
+  }
+
+  String? _normalizeBuildMode(String? mode) {
+    final trimmed = mode?.trim();
+    return switch (trimmed) {
+      null || '' => null,
+      'debug' || 'profile' || 'release' => trimmed,
+      _ => null,
+    };
+  }
+
+  List<String>? _parseCommandArgs(String input) {
+    if (input.isEmpty) return const [];
+
+    final args = <String>[];
+    final buffer = StringBuffer();
+    String? quote;
+    var escaping = false;
+
+    for (final codeUnit in input.codeUnits) {
+      final char = String.fromCharCode(codeUnit);
+      if (escaping) {
+        buffer.write(char);
+        escaping = false;
+        continue;
+      }
+
+      if (char == '\\') {
+        escaping = true;
+        continue;
+      }
+
+      if (quote != null) {
+        if (char == quote) {
+          quote = null;
+        } else {
+          buffer.write(char);
+        }
+        continue;
+      }
+
+      if (char == '"' || char == "'") {
+        quote = char;
+        continue;
+      }
+
+      if (char.trim().isEmpty) {
+        if (buffer.isNotEmpty) {
+          args.add(buffer.toString());
+          buffer.clear();
+        }
+        continue;
+      }
+
+      buffer.write(char);
+    }
+
+    if (escaping) buffer.write('\\');
+    if (quote != null) return null;
+    if (buffer.isNotEmpty) args.add(buffer.toString());
+    return args;
+  }
+
+  String? _firstReservedToolArg(List<String> args) {
+    const reserved = {
+      '--machine',
+      '-d',
+      '--device-id',
+      '--device',
+      '-t',
+      '--target',
+      '--flavor',
+      '--start-paused',
+    };
+    for (final arg in args) {
+      if (reserved.contains(arg)) return arg;
+      if (arg.startsWith('--device-id=')) return '--device-id';
+      if (arg.startsWith('--device=')) return '--device';
+      if (arg.startsWith('--target=')) return '--target';
+      if (arg.startsWith('--flavor=')) return '--flavor';
+    }
+    return null;
   }
 
   Future<void> _prepareForLaunch(_FlutterLaunchMode mode) async {
@@ -364,7 +990,7 @@ class RunService {
     _initialPauseReached = false;
     _initialResumePending = mode == _FlutterLaunchMode.debug;
 
-    if (mode != _FlutterLaunchMode.debug) {
+    if (mode == _FlutterLaunchMode.run) {
       _requestedDebugBreakpoints = const [];
       return;
     }
@@ -375,6 +1001,8 @@ class RunService {
 
   Future<void> _handleProcessExit(int code) async {
     final wasDebug = _isDebugMode;
+    final launchKind = _activeLaunchKind;
+    final launchConfigurationId = _activeLaunchConfigurationId;
 
     _isRunning = false;
     _process = null;
@@ -382,6 +1010,8 @@ class RunService {
     _devToolsUrl = null;
     _wsUri = null;
     _launchMode = null;
+    _activeLaunchKind = null;
+    _activeLaunchConfigurationId = null;
 
     await _stdoutSub?.cancel();
     _stdoutSub = null;
@@ -402,18 +1032,31 @@ class RunService {
     }
 
     await _logInfo('Process exited with code $code.');
+    if (launchKind != null && launchConfigurationId != null) {
+      await context.launch.didEnd(
+        LumideLaunchEvent(
+          providerId: launchProviderFlutter,
+          kind: launchKind,
+          configurationId: launchConfigurationId,
+          exitCode: code,
+        ),
+      );
+    }
   }
 
   Future<void> _startDebugSession() async {
     _hasDebugSession = true;
+    final statusMessage = _isAttachMode
+        ? 'Attaching Flutter debug session...'
+        : 'Launching Flutter debug session...';
     _rememberDebugSessionState(
       state: LumideDebugSessionState.launching,
-      statusMessage: 'Launching Flutter debug session...',
+      statusMessage: statusMessage,
     );
     await context.debug.startSession(
       _buildDebugSession(
         state: LumideDebugSessionState.launching,
-        statusMessage: 'Launching Flutter debug session...',
+        statusMessage: statusMessage,
       ),
     );
   }
@@ -685,7 +1328,12 @@ class RunService {
       final isolateRefs = vm.isolates ?? const <IsolateRef>[];
       if (isolateRefs.isEmpty) return;
 
-      final isolateId = isolateRefs.first.id;
+      // Find the main isolate (e.g. named 'main') first, or fall back to the first isolate
+      final isolateRef = isolateRefs.firstWhere(
+        (ref) => ref.name?.contains('main') == true,
+        orElse: () => isolateRefs.first,
+      );
+      final isolateId = isolateRef.id;
       if (isolateId == null) return;
 
       await _setActiveIsolate(isolateId);
@@ -734,7 +1382,9 @@ class RunService {
     if (isolateId != null &&
         (_activeIsolateId == null ||
             _activeIsolateId == isolateId ||
-            _isPauseOrResumeEvent(kind))) {
+            _isPauseOrResumeEvent(kind) ||
+            kind == EventKind.kIsolateRunnable ||
+            kind == EventKind.kIsolateStart)) {
       await _setActiveIsolate(isolateId);
     }
 
@@ -820,8 +1470,16 @@ class RunService {
   }
 
   Future<void> _syncDebugStateFromPauseEvent(Event? pauseEvent) async {
+    if (!_isDebugMode) return;
+
     final kind = pauseEvent?.kind;
-    if (kind == null || !_isDebugMode) return;
+    if (pauseEvent == null || kind == null) {
+      await _updateDebugSession(
+        state: LumideDebugSessionState.running,
+        statusMessage: 'Running',
+      );
+      return;
+    }
 
     switch (kind) {
       case EventKind.kResume:
@@ -836,7 +1494,7 @@ class RunService {
         if (await _shouldSuppressStartupPause()) {
           return;
         }
-        await _applyPausedDebugState(pauseEvent!);
+        await _applyPausedDebugState(pauseEvent);
         await _tryResumeAfterInitialBreakpointSync();
         return;
 
@@ -844,9 +1502,24 @@ class RunService {
       case EventKind.kPauseInterrupted:
       case EventKind.kPauseException:
       case EventKind.kPausePostRequest:
-      case EventKind.kPauseExit:
-        await _applyPausedDebugState(pauseEvent!);
+        await _applyPausedDebugState(pauseEvent);
         await _tryResumeAfterInitialBreakpointSync();
+        return;
+
+      case EventKind.kPauseExit:
+        await _updateDebugSession(
+          state: LumideDebugSessionState.terminated,
+          stoppedReason: 'exit',
+          statusMessage: 'Flutter isolate paused on exit.',
+        );
+        return;
+
+      default:
+        // Any other non-pause kind (e.g. None) means the isolate is running
+        await _updateDebugSession(
+          state: LumideDebugSessionState.running,
+          statusMessage: 'Running',
+        );
         return;
     }
   }
@@ -1843,12 +2516,16 @@ class RunService {
     if (!confirm) return;
 
     await context.window.showMessage(
-      'Stopping Flutter app',
-      title: _isDebugMode ? 'Flutter Debug' : 'Flutter Run',
+      _isAttachMode ? 'Detaching from Flutter app' : 'Stopping Flutter app',
+      title: _isAttachMode
+          ? 'Flutter Attach'
+          : _isDebugMode
+              ? 'Flutter Debug'
+              : 'Flutter Run',
     );
 
     if (_activeAppId != null) {
-      _sendMachineCommand('app.stop');
+      _sendMachineCommand(_isAttachMode ? 'app.detach' : 'app.stop');
     }
 
     if (_process case final proc?) {
@@ -1885,6 +2562,7 @@ class RunService {
   }
 
   Future<void> dispose() async {
+    await context.launch.unregisterProvider(launchProviderFlutter);
     await stop();
     await _disconnectVmService();
     if (_hasDebugSession) {

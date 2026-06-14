@@ -1,3 +1,13 @@
+## 1.8.0 (Unreleased)
+
+> This release requires Lumide 0.12.0 and later. Do not update if you are using older versions.
+
+### 🚀 New Features
+- Add Flutter Attach support.
+- Add support for custom flavor, custom launch args.
+- Use File Picker for Custom Target option.
+- Bump `lumide_api` version to `1.5.0`.
+
 ## 1.7.1 (2026-05-17)
 
 ### ✨Enhancements

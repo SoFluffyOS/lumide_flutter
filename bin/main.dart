@@ -31,6 +31,8 @@ class FlutterPlugin extends LumidePlugin {
     targetService = TargetService(context, projectService);
     runService = RunService(context, projectService, sdkManager, deviceService,
         targetService, daemonService);
+    deviceService.onDidChange = runService.refreshLaunchConfigurations;
+    targetService.onDidChange = runService.refreshLaunchConfigurations;
 
     // Inject RunService into FlutterService (break circular dependency)
     flutterService.setRunService(runService);
@@ -65,11 +67,20 @@ class FlutterPlugin extends LumidePlugin {
         case cmdFlutterDevice:
           deviceService.selectDevice(position);
           break;
+        case cmdFlutterSetFlavor:
+          runService.setFlavor();
+          break;
+        case cmdFlutterSetBuildMode:
+          runService.setBuildMode();
+          break;
         case cmdFlutterRun:
           runService.run();
           break;
         case cmdFlutterDebug:
           runService.debug();
+          break;
+        case cmdFlutterAttach:
+          runService.attach();
           break;
         case cmdFlutterStop:
           runService.stop();
@@ -127,6 +138,18 @@ class FlutterPlugin extends LumidePlugin {
     );
 
     context.commands.registerCommand(
+      id: cmdFlutterSetFlavor,
+      title: 'Flutter: Set Flavor',
+      callback: ([args]) => runService.setFlavor(),
+    );
+
+    context.commands.registerCommand(
+      id: cmdFlutterSetBuildMode,
+      title: 'Flutter: Set Build Mode',
+      callback: ([args]) => runService.setBuildMode(),
+    );
+
+    context.commands.registerCommand(
       id: cmdFlutterRun,
       title: 'Flutter: Run',
       callback: ([args]) => runService.run(),
@@ -136,6 +159,12 @@ class FlutterPlugin extends LumidePlugin {
       id: cmdFlutterDebug,
       title: 'Flutter: Debug',
       callback: ([args]) => runService.debug(),
+    );
+
+    context.commands.registerCommand(
+      id: cmdFlutterAttach,
+      title: 'Flutter: Attach',
+      callback: ([args]) => runService.attach(),
     );
 
     context.commands.registerCommand(
