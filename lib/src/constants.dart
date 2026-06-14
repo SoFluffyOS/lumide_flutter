@@ -1,6 +1,7 @@
 // commands
 const String cmdFlutterRun = 'flutter.run';
 const String cmdFlutterDebug = 'flutter.debug';
+const String cmdFlutterAttach = 'flutter.attach';
 const String cmdFlutterStop = 'flutter.stop';
 const String cmdFlutterHotReload = 'flutter.hotReload';
 const String cmdFlutterHotRestart = 'flutter.hotRestart';
@@ -13,8 +14,12 @@ const String cmdFlutterCreate = 'flutter.create';
 const String cmdFlutterSelectDevice = 'flutter.selectDevice';
 const String cmdFlutterSelectTarget = 'flutter.selectTarget';
 const String cmdFlutterTarget = 'flutter.target';
+const String cmdFlutterSetFlavor = 'flutter.setFlavor';
+const String cmdFlutterSetBuildMode = 'flutter.setBuildMode';
 const String cmdFlutterOpenDevTools = 'flutter.openDevTools';
 const String cmdFlutterOpenDevToolsWebview = 'flutter.openDevToolsWebview';
+const String launchProviderFlutter = 'flutter';
+const String launchConfigCurrent = 'current';
 
 // configuration
 const String confLogEntryLimit = 'flutter.logEntryLimit';
@@ -49,6 +54,7 @@ const String iconLayout = 'layout-dashboard';
 const String iconTarget = 'crosshair';
 const String iconCode = 'code';
 const String iconEdit = 'pencil';
+const String iconTerminal = 'terminal';
 
 // assets
 const String assetIconFlutterSolid = 'icon_flutter_solid.svg';

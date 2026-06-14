@@ -44,7 +44,6 @@ configuration:
     default: 10
     title: 'Log Pressure Threshold'
     description: 'When pending log count exceeds this, skip expensive VM lookups for faster processing.'
-
 contributes:
   commands:
     - id: flutter.doctor
@@ -62,6 +61,9 @@ contributes:
     - id: flutter.debug
       title: 'Flutter: Debug'
       category: 'Flutter'
+    - id: flutter.attach
+      title: 'Flutter: Attach'
+      category: 'Flutter'
     - id: flutter.hotReload
       title: 'Flutter: Hot Reload'
       category: 'Flutter'
@@ -76,6 +78,9 @@ contributes:
       category: 'Flutter'
     - id: flutter.selectDevice
       title: 'Flutter: Select Device'
+      category: 'Flutter'
+    - id: flutter.setFlavor
+      title: 'Flutter: Set Flavor'
       category: 'Flutter'
     - id: flutter.openDevTools
       title: 'Flutter: Open DevTools'

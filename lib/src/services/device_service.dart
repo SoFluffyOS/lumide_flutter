@@ -15,6 +15,7 @@ class DeviceService {
   String? _selectedDeviceId;
   bool _isLoading = false;
   bool _isInitialized = false;
+  Future<void> Function()? onDidChange;
 
   StreamSubscription? _deviceAddedSub;
   StreamSubscription? _deviceRemovedSub;
@@ -28,7 +29,7 @@ class DeviceService {
       if (!_devices.any((d) => d['id'] == device['id'])) {
         _devices.add(device);
         _selectedDeviceId ??= device['id'];
-        _updateToolbar();
+        _notifyChanged();
         if (_isInitialized) {
           context.window.showMessage('Device connected: ${device['name']}');
         }
@@ -41,7 +42,7 @@ class DeviceService {
         _selectedDeviceId =
             _devices.isNotEmpty ? _devices.first['id'] as String? : null;
       }
-      _updateToolbar();
+      _notifyChanged();
       if (_isInitialized) {
         context.window.showMessage('Device disconnected: ${device['name']}');
       }
@@ -56,7 +57,7 @@ class DeviceService {
 
   Future<void> refreshDevices() async {
     _isLoading = true;
-    await _updateToolbar();
+    await _notifyChanged();
 
     try {
       final devices =
@@ -80,7 +81,7 @@ class DeviceService {
     } finally {
       _isLoading = false;
       _isInitialized = true;
-      await _updateToolbar();
+      await _notifyChanged();
     }
   }
 
@@ -93,11 +94,17 @@ class DeviceService {
     // Show cached devices immediately + Refresh option
     final items = devices.map((d) {
       final icon = _getDeviceIcon(d);
+      final tooltip = [
+        d['id'],
+        d['platformType'],
+        d['sdk'],
+      ].join(' • ');
 
       return QuickPickItem(
         label: d['name'],
         description: d['id'],
-        detail: d['isSupported'] == true ? 'Supported' : 'Unsupported',
+        detail: d['id'],
+        tooltip: tooltip,
         payload: d['id'],
         icon: icon,
       );
@@ -109,7 +116,9 @@ class DeviceService {
     if (_isMacOS && !hasIosSimulatorDevice) {
       items.add(const QuickPickItem(
         label: 'Start iOS Simulator',
-        detail: 'Launch Apple Simulator app',
+        detail: 'Launch Simulator',
+        tooltip:
+            'Launch Apple Simulator and select the first detected iOS simulator device.',
         payload: 'start-ios-simulator',
         icon: iconPlay,
       ));
@@ -117,7 +126,9 @@ class DeviceService {
 
     items.add(const QuickPickItem(
       label: 'Refresh Devices...',
-      detail: 'Scan for connected devices',
+      detail: 'Scan devices',
+      tooltip:
+          'Scan for connected Flutter devices, simulators, emulators, and browsers.',
       payload: 'refresh',
       icon: iconRefresh,
     ));
@@ -138,7 +149,7 @@ class DeviceService {
         await _startIosSimulator();
       } else {
         _selectedDeviceId = payload;
-        await _updateToolbar();
+        await _notifyChanged();
       }
     }
   }
@@ -185,7 +196,7 @@ class DeviceService {
 
     final existing = _findFirstIosSimulatorDevice(_devices);
     if (_trySelectDevice(existing)) {
-      await _updateToolbar();
+      await _notifyChanged();
       return true;
     }
 
@@ -206,13 +217,13 @@ class DeviceService {
       await refreshDevices();
 
       if (_trySelectDevice(addedDevice)) {
-        await _updateToolbar();
+        await _notifyChanged();
         return true;
       }
 
       final detected = _findFirstIosSimulatorDevice(_devices);
       if (_trySelectDevice(detected)) {
-        await _updateToolbar();
+        await _notifyChanged();
         return true;
       }
     } finally {
@@ -281,43 +292,59 @@ class DeviceService {
             targetPlatform.startsWith('macos'));
   }
 
-  Future<void> _updateToolbar() async {
-    if (_isLoading) {
-      await context.toolbar.registerItem(
-        id: cmdFlutterDevice,
-        icon: iconSmartphone,
-        label: 'Scanning...',
-        tooltip: 'Scanning for devices...',
-        alignment: ToolbarItemAlignment.right,
-        priority: 200,
-      );
-      return;
+  Future<void> _notifyChanged() async {
+    final callback = onDidChange;
+    if (callback != null) {
+      await callback();
     }
+  }
 
-    String icon = iconSmartphone;
-    String? label;
-    String tooltip = 'Select Device';
+  String get displayIcon {
+    if (_isLoading) {
+      return iconSmartphone;
+    }
 
     if (_selectedDeviceId != null) {
       final device = _devices.firstWhere((d) => d['id'] == _selectedDeviceId,
           orElse: () => {});
       if (device.isNotEmpty) {
-        label = device['name'];
-        tooltip = 'Device: ${device['name']}';
-        icon = _getDeviceIcon(device);
+        return _getDeviceIcon(device);
       }
-    } else {
-      tooltip = 'No Devices Found';
     }
 
-    await context.toolbar.registerItem(
-      id: cmdFlutterDevice,
-      icon: icon,
-      label: label,
-      tooltip: tooltip,
-      alignment: ToolbarItemAlignment.right,
-      priority: 200,
-    );
+    return iconSmartphone;
+  }
+
+  String get displayLabel {
+    if (_isLoading) {
+      return 'Scanning...';
+    }
+
+    if (_selectedDeviceId != null) {
+      final device = _devices.firstWhere((d) => d['id'] == _selectedDeviceId,
+          orElse: () => {});
+      if (device.isNotEmpty) {
+        return device['name']?.toString() ?? _selectedDeviceId!;
+      }
+    }
+
+    return 'Device';
+  }
+
+  String get displayTooltip {
+    if (_isLoading) {
+      return 'Scanning for devices...';
+    }
+
+    if (_selectedDeviceId != null) {
+      final device = _devices.firstWhere((d) => d['id'] == _selectedDeviceId,
+          orElse: () => {});
+      if (device.isNotEmpty) {
+        return 'Device: ${device['name']}';
+      }
+    }
+
+    return 'No Devices Found';
   }
 
   String _getDeviceIcon(Map<String, dynamic> device) {

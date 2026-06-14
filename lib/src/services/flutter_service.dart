@@ -122,8 +122,9 @@ class FlutterService {
     items.add(
       const QuickPickItem(
         label: 'Pub Get',
-        description: 'Current Project',
+        description: 'flutter pub get',
         detail: 'flutter pub get',
+        tooltip: 'Run flutter pub get in the current Flutter project.',
         payload: 'pubGet',
         icon: iconArchive,
       ),
@@ -132,8 +133,9 @@ class FlutterService {
     items.add(
       const QuickPickItem(
         label: 'Clean',
-        description: 'Current Project',
+        description: 'flutter clean',
         detail: 'flutter clean',
+        tooltip: 'Run flutter clean in the current Flutter project.',
         payload: 'clean',
         icon: iconTrash,
       ),
@@ -146,6 +148,8 @@ class FlutterService {
         label: 'Pub Get All',
         description: 'Workspace',
         detail: 'Run in all found projects',
+        tooltip:
+            'Run flutter pub get in every Flutter project found in the workspace.',
         payload: 'pubGetAll',
         icon: iconArchive,
       ),
@@ -156,7 +160,9 @@ class FlutterService {
     items.add(
       const QuickPickItem(
         label: 'Doctor',
+        description: 'flutter doctor',
         detail: 'flutter doctor',
+        tooltip: 'Run flutter doctor and show diagnostic output.',
         payload: 'doctor',
         icon: iconZap,
       ),
@@ -166,7 +172,8 @@ class FlutterService {
       items.add(
         const QuickPickItem(
           label: 'Open DevTools',
-          detail: 'Open Dart DevTools in Webview pane',
+          detail: 'Open in Lumide',
+          tooltip: 'Open Dart DevTools in a Lumide webview panel.',
           payload: 'devtools-webview',
           icon: iconLayout,
         ),
@@ -174,7 +181,8 @@ class FlutterService {
       items.add(
         const QuickPickItem(
           label: 'Open DevTools (Browser)',
-          detail: 'Open Dart DevTools in external browser',
+          detail: 'Open externally',
+          tooltip: 'Open Dart DevTools in the system browser.',
           payload: 'devtools',
           icon: iconGlobe,
         ),

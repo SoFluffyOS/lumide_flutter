@@ -116,9 +116,7 @@ class ProjectService {
       // .plugin_symlinks, etc.
       final parts = path.split(absolutePath);
       if (parts.any((part) =>
-          part.startsWith('.') ||
-          part == 'build' ||
-          part == 'ephemeral')) {
+          part.startsWith('.') || part == 'build' || part == 'ephemeral')) {
         continue;
       }
 
