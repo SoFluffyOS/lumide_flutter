@@ -20,6 +20,7 @@ const String cmdFlutterOpenDevTools = 'flutter.openDevTools';
 const String cmdFlutterOpenDevToolsWebview = 'flutter.openDevToolsWebview';
 const String launchProviderFlutter = 'flutter';
 const String launchConfigCurrent = 'current';
+const String vscodeConfigPrefix = 'vscode:';
 
 // configuration
 const String confLogEntryLimit = 'flutter.logEntryLimit';
@@ -58,4 +59,6 @@ const String iconTerminal = 'terminal';
 
 // assets
 const String assetIconFlutterSolid = 'icon_flutter_solid.svg';
+const String assetIconFlutter = 'assets/icon_flutter.png';
+const String assetIconDart = 'assets/icon_dart.png';
 const String folderAssets = 'assets';

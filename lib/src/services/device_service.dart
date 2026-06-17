@@ -13,7 +13,7 @@ class DeviceService {
 
   List<Map<String, dynamic>> _devices = [];
   String? _selectedDeviceId;
-  bool _isLoading = false;
+  bool _isLoading = true;
   bool _isInitialized = false;
   Future<void> Function()? onDidChange;
 
@@ -91,7 +91,7 @@ class DeviceService {
 
     final hasIosSimulatorDevice = devices.any(_isIosSimulatorDevice);
 
-    // Show cached devices immediately + Refresh option
+    // Show cached devices immediately.
     final items = devices.map((d) {
       final icon = _getDeviceIcon(d);
       final tooltip = [
@@ -110,7 +110,6 @@ class DeviceService {
       );
     }).toList();
 
-    // Add divider/refresh option
     items.add(const QuickPickItem(label: '', isSeparator: true));
 
     if (_isMacOS && !hasIosSimulatorDevice) {
@@ -151,6 +150,14 @@ class DeviceService {
         _selectedDeviceId = payload;
         await _notifyChanged();
       }
+    }
+  }
+
+  Future<void> selectDeviceById(String deviceId) async {
+    final match = _devices.where((d) => d['id'] == deviceId).firstOrNull;
+    if (match != null) {
+      _selectedDeviceId = deviceId;
+      await _notifyChanged();
     }
   }
 
@@ -356,7 +363,6 @@ class DeviceService {
     final targetPlatform =
         device['targetPlatform']?.toString().toLowerCase() ?? '';
 
-    // Web
     if (category == 'web' ||
         platformType == 'web' ||
         platform == 'web' ||
@@ -364,7 +370,6 @@ class DeviceService {
       return iconGlobe;
     }
 
-    // Desktop
     if (category == 'desktop' ||
         platformType == 'desktop' ||
         ['darwin', 'macos', 'linux', 'windows'].contains(platform) ||
@@ -373,7 +378,6 @@ class DeviceService {
       return iconMonitor;
     }
 
-    // Default to smartphone for mobile (android, ios) or fallback
     return iconSmartphone;
   }
 

@@ -1,6 +1,7 @@
 export 'daemon_service.dart';
 export 'device_service.dart';
 export 'flutter_service.dart';
+export 'launch_config_service.dart';
 export 'log_service.dart';
 export 'project_service.dart';
 export 'run_service.dart';
