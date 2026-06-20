@@ -14,6 +14,7 @@ class FlutterPlugin extends LumidePlugin {
   late ProjectService projectService;
   late SdkManager sdkManager;
   late DaemonService daemonService;
+  late LaunchConfigService launchConfigService;
   late TargetService targetService;
   late RunService runService;
 
@@ -28,9 +29,10 @@ class FlutterPlugin extends LumidePlugin {
         DaemonService(context, projectService, sdkManager, logService);
     flutterService = FlutterService(context, projectService, sdkManager);
     deviceService = DeviceService(context, statusBarService, daemonService);
-    targetService = TargetService(context, projectService);
+    launchConfigService = LaunchConfigService(context, projectService, log);
+    targetService = TargetService(context, projectService, launchConfigService);
     runService = RunService(context, projectService, sdkManager, deviceService,
-        targetService, daemonService);
+        targetService, daemonService, launchConfigService);
     deviceService.onDidChange = runService.refreshLaunchConfigurations;
     targetService.onDidChange = runService.refreshLaunchConfigurations;
 
@@ -38,21 +40,26 @@ class FlutterPlugin extends LumidePlugin {
     flutterService.setRunService(runService);
 
     // 2. Setup UI & Listeners
-    await daemonService.start();
-    await statusBarService.init();
-    await deviceService.init();
-    await targetService.init();
-    await runService.init();
+    unawaited(daemonService.start());
+    await runService
+        .init(); // Register provider first so updateConfigurations notifications work
+    await Future.wait([
+      statusBarService.init(),
+      deviceService.init(),
+      launchConfigService.init(),
+      targetService.init(),
+    ]);
+    launchConfigService.onDidChange = runService.refreshLaunchConfigurations;
 
-    // 3. Environment Check
-    final hasSdk = await flutterService.checkSdk();
-    if (!hasSdk) {
-      await context.window.showMessage(
-          'Flutter SDK not found. Make sure "flutter" is in your PATH.',
-          type: MessageType.error);
-      await statusBarService.updateVersion('Not Found');
-      return;
-    }
+    // 3. Environment Check (asynchronous in background)
+    unawaited(flutterService.checkSdk().then((hasSdk) async {
+      if (!hasSdk) {
+        await context.window.showMessage(
+            'Flutter SDK not found. Make sure "flutter" is in your PATH.',
+            type: MessageType.error);
+        await statusBarService.updateVersion('Not Found');
+      }
+    }));
 
     // 4. Register Commands
     _registerCommands(context);
@@ -210,6 +217,7 @@ class FlutterPlugin extends LumidePlugin {
     await runService.dispose();
     await deviceService.dispose();
     await targetService.dispose();
+    await launchConfigService.dispose();
     await statusBarService.dispose();
     await flutterService.dispose();
   }

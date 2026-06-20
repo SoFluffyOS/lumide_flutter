@@ -2,18 +2,23 @@ import 'dart:io' as io;
 
 import 'package:lumide_api/lumide_api.dart';
 import 'package:lumide_flutter/src/constants.dart';
+import 'package:lumide_flutter/src/services/launch_config_service.dart';
 import 'package:lumide_flutter/src/services/project_service.dart';
 import 'package:path/path.dart' as path;
 
 class TargetService {
   final LumideContext context;
   final ProjectService projectService;
+  final LaunchConfigService launchConfigService;
 
   String? _selectedTarget;
-  bool _isLoading = false;
+  VscodeLaunchEntry? _selectedVscodeEntry;
+  bool _isLoading = true;
   Future<void> Function()? onDidChange;
 
-  TargetService(this.context, this.projectService);
+  TargetService(this.context, this.projectService, this.launchConfigService);
+
+  VscodeLaunchEntry? get selectedVscodeEntry => _selectedVscodeEntry;
 
   Future<String?> _getCachePath() async {
     try {
@@ -26,29 +31,46 @@ class TargetService {
 
   Future<void> _loadCache() async {
     final cachePath = await _getCachePath();
-    if (cachePath != null && io.File(cachePath).existsSync()) {
-      try {
-        final cached = await io.File(cachePath).readAsString();
-        final trim = cached.trim();
-        if (trim.isNotEmpty && io.File(trim).existsSync()) {
-          _selectedTarget = trim;
+    if (cachePath == null || !io.File(cachePath).existsSync()) return;
+    try {
+      final cached = (await io.File(cachePath).readAsString()).trim();
+      if (cached.isEmpty) return;
+
+      if (cached.startsWith(vscodeConfigPrefix)) {
+        // Restore a previously selected VS Code launch entry.
+        final name = cached.substring(vscodeConfigPrefix.length);
+        final entry = launchConfigService.entries
+            .where((e) => e.name == name)
+            .firstOrNull;
+        if (entry != null) {
+          _selectedVscodeEntry = entry;
+          _selectedTarget = null;
         }
-      } catch (_) {}
-    }
+        return;
+      }
+
+      if (io.File(cached).existsSync()) {
+        _selectedTarget = cached;
+        _selectedVscodeEntry = null;
+      }
+    } catch (_) {}
   }
 
   Future<void> _saveCache() async {
-    if (_selectedTarget == null) return;
+    final cacheValue = switch (_selectedVscodeEntry) {
+      final VscodeLaunchEntry entry => '$vscodeConfigPrefix${entry.name}',
+      _ => _selectedTarget,
+    };
+    if (cacheValue == null) return;
     final cachePath = await _getCachePath();
-    if (cachePath != null) {
-      try {
-        final dir = io.Directory(path.dirname(cachePath));
-        if (!dir.existsSync()) {
-          dir.createSync(recursive: true);
-        }
-        await io.File(cachePath).writeAsString(_selectedTarget!);
-      } catch (_) {}
-    }
+    if (cachePath == null) return;
+    try {
+      final dir = io.Directory(path.dirname(cachePath));
+      if (!dir.existsSync()) {
+        dir.createSync(recursive: true);
+      }
+      await io.File(cachePath).writeAsString(cacheValue);
+    } catch (_) {}
   }
 
   Future<void> init() async {
@@ -89,7 +111,6 @@ class TargetService {
 
   Future<void> selectTarget(
       [Map<String, int>? position, bool forceRefresh = false]) async {
-    // Loop instead of recursion so "Refresh" doesn't grow the stack.
     var refresh = forceRefresh;
     while (true) {
       final items = <QuickPickItem>[];
@@ -99,24 +120,51 @@ class TargetService {
         root = await projectService.getProjectRoot();
       } catch (_) {}
 
+      final vscodeEntries = launchConfigService.entries;
+      if (vscodeEntries.isNotEmpty) {
+        items.add(const QuickPickItem(
+          label: 'VS Code Configurations',
+          isSeparator: true,
+        ));
+        for (final entry in vscodeEntries) {
+          items.add(QuickPickItem(
+            label: entry.name,
+            description: path.basename(entry.program),
+            tooltip: entry.program,
+            payload: '$vscodeConfigPrefix${entry.name}',
+            iconPath: entry.iconPath,
+            noTint: true,
+          ));
+        }
+      }
+
       if (root != null) {
         final mainDartFiles =
             await projectService.findAllTargets(forceRefresh: refresh);
 
-        for (final absolutePath in mainDartFiles) {
-          final rel = path.relative(absolutePath, from: root);
-          final packageName = await _findPackageName(absolutePath, root);
-          final targetIcon = await getTargetIcon(absolutePath);
+        if (mainDartFiles.isNotEmpty) {
+          if (vscodeEntries.isNotEmpty) {
+            items.add(const QuickPickItem(
+              label: 'Dart Entry Points',
+              isSeparator: true,
+            ));
+          }
 
-          items.add(QuickPickItem(
-            label: path.basename(absolutePath),
-            description: packageName,
-            tooltip: rel,
-            payload: absolutePath,
-            icon: targetIcon.icon,
-            iconPath: targetIcon.iconPath,
-            noTint: targetIcon.noTint,
-          ));
+          for (final absolutePath in mainDartFiles) {
+            final rel = path.relative(absolutePath, from: root);
+            final packageName = await _findPackageName(absolutePath, root);
+            final targetIcon = await getTargetIcon(absolutePath);
+
+            items.add(QuickPickItem(
+              label: path.basename(absolutePath),
+              description: packageName,
+              tooltip: rel,
+              payload: absolutePath,
+              icon: targetIcon.icon,
+              iconPath: targetIcon.iconPath,
+              noTint: targetIcon.noTint,
+            ));
+          }
         }
 
         if (_selectedTarget != null &&
@@ -168,15 +216,25 @@ class TargetService {
         final payload = selected.payload as String;
         if (payload == 'refresh') {
           await context.window.showMessage('Scanning for flutter targets');
+          await launchConfigService.reload();
           refresh = true;
-          continue; // Re-open picker via loop iteration
+          continue;
         } else if (payload == 'custom') {
           final selectedTarget = await setCustomTarget();
           if (selectedTarget == null) {
             return;
           }
+        } else if (payload.startsWith(vscodeConfigPrefix)) {
+          final name = payload.substring(vscodeConfigPrefix.length);
+          final entry = launchConfigService.entries
+              .where((e) => e.name == name)
+              .firstOrNull;
+          if (entry != null) {
+            await setSelectedVscodeEntry(entry);
+          }
         } else {
-          _selectedTarget = payload;
+          await setSelectedTarget(payload);
+          return;
         }
         await _saveCache();
         await _notifyChanged();
@@ -208,6 +266,14 @@ class TargetService {
 
   Future<void> setSelectedTarget(String target) async {
     _selectedTarget = target;
+    _selectedVscodeEntry = null;
+    await _saveCache();
+    await _notifyChanged();
+  }
+
+  Future<void> setSelectedVscodeEntry(VscodeLaunchEntry entry) async {
+    _selectedVscodeEntry = entry;
+    _selectedTarget = null;
     await _saveCache();
     await _notifyChanged();
   }
@@ -276,14 +342,16 @@ class TargetService {
     return trimmed;
   }
 
-
   Future<void> refreshTargets([Map<String, int>? position]) async {
     _isLoading = true;
     await _notifyChanged();
 
     try {
       await projectService.getProjectRoot();
-      await projectService.findAllTargets(forceRefresh: true);
+      await Future.wait([
+        projectService.findAllTargets(forceRefresh: true),
+        launchConfigService.reload(),
+      ]);
     } catch (_) {}
 
     _isLoading = false;
@@ -298,8 +366,10 @@ class TargetService {
   }
 
   Future<String> displayLabel() async {
-    if (_isLoading) {
-      return 'Detecting...';
+    if (_isLoading) return 'Detecting...';
+
+    if (_selectedVscodeEntry != null) {
+      return _selectedVscodeEntry!.name;
     }
 
     if (_selectedTarget != null) {
@@ -310,13 +380,14 @@ class TargetService {
   }
 
   Future<String> displayTooltip() async {
-    if (_isLoading) {
-      return 'Detecting run targets...';
+    if (_isLoading) return 'Detecting run targets...';
+
+    if (_selectedVscodeEntry != null) {
+      final entry = _selectedVscodeEntry!;
+      return '${entry.name} (${path.basename(entry.program)})';
     }
 
-    if (_selectedTarget == null) {
-      return 'Select Target Entry Point';
-    }
+    if (_selectedTarget == null) return 'Select Target Entry Point';
 
     String? root;
     try {
@@ -343,10 +414,10 @@ class TargetService {
       final isFlutter =
           content.contains('sdk: flutter') || content.contains('flutter:');
       if (isFlutter) {
-        return (icon: null, iconPath: 'assets/icon_flutter.png', noTint: true);
+        return (icon: null, iconPath: assetIconFlutter, noTint: true);
       }
     } catch (_) {}
-    return (icon: null, iconPath: 'assets/icon_dart.png', noTint: true);
+    return (icon: null, iconPath: assetIconDart, noTint: true);
   }
 
   Future<String?> _findPubspecPath(String filePath) async {

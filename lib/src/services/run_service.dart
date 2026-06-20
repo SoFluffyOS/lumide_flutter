@@ -6,6 +6,7 @@ import 'package:lumide_api/lumide_api.dart';
 import 'package:lumide_flutter/src/constants.dart';
 import 'package:lumide_flutter/src/services/daemon_service.dart';
 import 'package:lumide_flutter/src/services/device_service.dart';
+import 'package:lumide_flutter/src/services/launch_config_service.dart';
 import 'package:lumide_flutter/src/services/project_service.dart';
 import 'package:lumide_flutter/src/services/sdk_manager.dart';
 import 'package:lumide_flutter/src/services/target_service.dart';
@@ -65,6 +66,7 @@ class RunService {
   final DeviceService deviceService;
   final TargetService targetService;
   final DaemonService daemonService;
+  final LaunchConfigService launchConfigService;
 
   LumideOutputChannel? _channel;
   LumideOutputChannel? get channel => _channel;
@@ -132,6 +134,7 @@ class RunService {
     this.deviceService,
     this.targetService,
     this.daemonService,
+    this.launchConfigService,
   );
 
   Future<void> init() async {
@@ -168,19 +171,27 @@ class RunService {
     context.launch.onResolveConfigurations(_resolveLaunchConfigurations);
     context.launch.onConfigure(_handleConfigureRequest);
     context.launch.onLaunch(_handleLaunchRequest);
-    await context.launch.registerProvider(
-      id: launchProviderFlutter,
-      title: 'Flutter',
-      workspacePatterns: const ['pubspec.yaml'],
-      kinds: const [
-        LumideLaunchKind.run,
-        LumideLaunchKind.debug,
-        LumideLaunchKind.attach,
-      ],
-      icon: iconPlay,
-      priority: 100,
-    );
-    await _updateLaunchConfigurations();
+
+    // Fetch initial configurations and register the provider.
+    final initialConfigs = await _currentLaunchConfigurations();
+    await Future.wait([
+      context.launch.registerProvider(
+        id: launchProviderFlutter,
+        title: 'Flutter',
+        workspacePatterns: const ['pubspec.yaml'],
+        kinds: const [
+          LumideLaunchKind.run,
+          LumideLaunchKind.debug,
+          LumideLaunchKind.attach,
+        ],
+        icon: iconPlay,
+        priority: 100,
+      ),
+      context.launch.updateConfigurations(
+        launchProviderFlutter,
+        initialConfigs,
+      ),
+    ]);
 
     await _showRunControls(isRunning: false);
 
@@ -241,9 +252,37 @@ class RunService {
   }
 
   Future<List<LumideLaunchConfiguration>> _currentLaunchConfigurations() async {
-    final targets = await targetService.launchTargets();
     final configs = <LumideLaunchConfiguration>[];
-    if (targets.isEmpty) {
+
+    final vscodeEntries = launchConfigService.entries;
+    final selectedVscode = targetService.selectedVscodeEntry;
+    for (final entry in vscodeEntries) {
+      final hasFixedDevice = entry.deviceId != null;
+      configs.add(LumideLaunchConfiguration(
+        id: '$vscodeConfigPrefix${entry.name}',
+        label: entry.name,
+        description: path.basename(entry.program),
+        iconPath: entry.iconPath,
+        noTint: true,
+        isDefault: selectedVscode?.name == entry.name,
+        kind: LumideLaunchKind.run,
+        arguments: {
+          'canLaunch': hasFixedDevice || deviceService.selectedDeviceId != null,
+          'targetLabel': entry.name,
+          'targetTooltip': entry.program,
+          'deviceLabel': entry.deviceId ?? deviceService.displayLabel,
+          'deviceTooltip': entry.deviceId != null
+              ? 'Device: ${entry.deviceId}'
+              : deviceService.displayTooltip,
+          'deviceIcon':
+              entry.deviceId != null ? iconGlobe : deviceService.displayIcon,
+          'hideDevicePicker': hasFixedDevice,
+        },
+      ));
+    }
+
+    final targets = await targetService.launchTargets();
+    if (targets.isEmpty && vscodeEntries.isEmpty) {
       configs.add(await _buildLaunchConfiguration(null));
     } else {
       for (final target in targets) {
@@ -270,6 +309,36 @@ class RunService {
   }
 
   Future<LumideLaunchConfiguration> _currentLaunchConfiguration() async {
+    // When a vscode entry is the active selection, return it as the current
+    // config so the toolbar/panel shows its name and icon correctly.
+    final vscodeEntry = targetService.selectedVscodeEntry;
+    if (vscodeEntry != null) {
+      final hasFixedDevice = vscodeEntry.deviceId != null;
+      return LumideLaunchConfiguration(
+        id: '$vscodeConfigPrefix${vscodeEntry.name}',
+        label: vscodeEntry.name,
+        description: vscodeEntry.deviceId ??
+            deviceService.selectedDeviceId ??
+            'No device selected',
+        iconPath: vscodeEntry.iconPath,
+        noTint: true,
+        isDefault: true,
+        kind: LumideLaunchKind.run,
+        arguments: {
+          'canLaunch': hasFixedDevice || deviceService.selectedDeviceId != null,
+          'targetLabel': vscodeEntry.name,
+          'targetTooltip': vscodeEntry.program,
+          'deviceLabel': vscodeEntry.deviceId ?? deviceService.displayLabel,
+          'deviceTooltip': vscodeEntry.deviceId != null
+              ? 'Device: ${vscodeEntry.deviceId}'
+              : deviceService.displayTooltip,
+          'deviceIcon': vscodeEntry.deviceId != null
+              ? iconGlobe
+              : deviceService.displayIcon,
+          'hideDevicePicker': hasFixedDevice,
+        },
+      );
+    }
     return await _buildLaunchConfiguration(targetService.selectedTarget);
   }
 
@@ -383,13 +452,33 @@ class RunService {
         await targetService.selectTarget(request.position);
         return await _currentLaunchConfiguration();
       case 'selectConfiguration':
-        if (request.configuration?.arguments['target']
+        final configId = request.configuration?.id ?? '';
+        if (configId.startsWith(vscodeConfigPrefix)) {
+          final name = configId.substring(vscodeConfigPrefix.length);
+          final entry = launchConfigService.entries
+              .where((e) => e.name == name)
+              .firstOrNull;
+          if (entry != null) {
+            await targetService.setSelectedVscodeEntry(entry);
+            if (entry.deviceId != null) {
+              await deviceService.selectDeviceById(entry.deviceId!);
+            }
+          }
+        } else if (request.configuration?.arguments['target']
             case final String target) {
           await targetService.setSelectedTarget(target);
         }
         return await _currentLaunchConfiguration();
       case 'device':
-        await deviceService.selectDevice(request.position);
+        final vscodeEntry = targetService.selectedVscodeEntry;
+        if (vscodeEntry != null && vscodeEntry.deviceId != null) {
+          await context.window.showMessage(
+            'The device is explicitly set to "${vscodeEntry.deviceId}" in launch.json. Please update the configuration in launch.json to change it.',
+            type: MessageType.error,
+          );
+        } else {
+          await deviceService.selectDevice(request.position);
+        }
         return await _currentLaunchConfiguration();
       case 'flavor':
         await setFlavor(request.value?.toString());
@@ -406,6 +495,15 @@ class RunService {
       case 'refreshTargets':
         await targetService.refreshTargets(request.position);
         return await _currentLaunchConfiguration();
+      case String id when id.startsWith(vscodeConfigPrefix):
+        final name = id.substring(vscodeConfigPrefix.length);
+        final entry = launchConfigService.entries
+            .where((e) => e.name == name)
+            .firstOrNull;
+        if (entry != null) {
+          await targetService.setSelectedVscodeEntry(entry);
+        }
+        return await _currentLaunchConfiguration();
       case 'stop':
         await stop();
         return await _currentLaunchConfiguration();
@@ -416,6 +514,22 @@ class RunService {
 
   Future<void> _handleLaunchRequest(LumideLaunchRequest request) async {
     if (request.providerId != launchProviderFlutter) return;
+
+    // If the user launches a vscode config directly from the picker without
+    // first selecting it, activate it now so _launch() picks it up.
+    final configId = request.configuration.id;
+    if (configId.startsWith(vscodeConfigPrefix)) {
+      final name = configId.substring(vscodeConfigPrefix.length);
+      final entry =
+          launchConfigService.entries.where((e) => e.name == name).firstOrNull;
+      if (entry != null) {
+        await targetService.setSelectedVscodeEntry(entry);
+        if (entry.deviceId != null) {
+          await deviceService.selectDeviceById(entry.deviceId!);
+        }
+      }
+    }
+
     final mode = switch (request.kind) {
       LumideLaunchKind.debug => _FlutterLaunchMode.debug,
       LumideLaunchKind.attach => _FlutterLaunchMode.attach,
@@ -571,81 +685,144 @@ class RunService {
       return;
     }
 
-    final deviceId = _stringArgument(configuration, 'deviceId') ??
-        deviceService.selectedDeviceId;
-    if (deviceId == null) {
-      await context.window.showMessage(
-        'No device selected. Use the device picker to choose one.',
-        type: MessageType.error,
-      );
-      return;
-    }
-
-    final flutterCmd = await sdkManager.getFlutterCommand(root);
-    final args = [
-      mode == _FlutterLaunchMode.attach ? 'attach' : 'run',
-      '--machine',
-    ];
-    if (mode == _FlutterLaunchMode.debug) {
-      args.add('--start-paused');
-    }
-    args.addAll(['-d', deviceId]);
-    final flavor =
-        _stringArgument(configuration, 'flavor') ?? await _configuredFlavor();
-    if (mode != _FlutterLaunchMode.attach && flavor != null) {
-      args.addAll(['--flavor', flavor]);
-    }
-    args.addAll(_stringListArgument(configuration, 'toolArgs'));
-
-    // Build mode: only for `flutter run`, not debug (needs debug build) or attach
-    if (mode == _FlutterLaunchMode.run) {
-      final buildMode = _normalizeBuildMode(
-        _stringArgument(configuration, 'buildMode') ?? _selectedBuildMode,
-      );
-      if (buildMode == 'release') {
-        args.add('--release');
-      } else if (buildMode == 'profile') {
-        args.add('--profile');
-      }
-      // null / 'debug' = Flutter default, no flag needed
-    }
-
-    String workingDirectory = root;
-    final selectedTarget = _stringArgument(configuration, 'target') ??
-        targetService.selectedTarget;
-    if (selectedTarget != null) {
-      final targetAbsolute = selectedTarget;
-      String packageRoot = path.dirname(targetAbsolute);
-      while (packageRoot != root && packageRoot.length >= root.length) {
-        final pubspecPath = path.join(packageRoot, 'pubspec.yaml');
-        if (await context.fs.exists(pubspecPath)) {
-          break;
-        }
-        packageRoot = path.dirname(packageRoot);
-      }
-
-      if (packageRoot.length < root.length) {
-        packageRoot = root;
-      }
-
-      workingDirectory = packageRoot;
-      final relativeTarget = path.relative(targetAbsolute, from: packageRoot);
-      args.addAll(['-t', relativeTarget]);
-    }
-
-    final title = switch (mode) {
-      _FlutterLaunchMode.attach => 'Flutter Attach',
-      _FlutterLaunchMode.debug => 'Flutter Debug',
-      _FlutterLaunchMode.run => 'Flutter Run',
-    };
-    final action = switch (mode) {
-      _FlutterLaunchMode.attach => 'Attaching',
-      _FlutterLaunchMode.debug => 'Debugging',
-      _FlutterLaunchMode.run => 'Running',
-    };
-
     try {
       await _prepareForLaunch(mode);
+
+      final vscodeEntry = targetService.selectedVscodeEntry;
+      final rawDeviceId = _stringArgument(configuration, 'deviceId') ??
+          vscodeEntry?.deviceId ??
+          deviceService.selectedDeviceId;
+      final rawFlavor = _stringArgument(configuration, 'flavor') ??
+          vscodeEntry?.flavorName ??
+          await _configuredFlavor();
+      final rawTarget = _stringArgument(configuration, 'target') ??
+          vscodeEntry?.program ??
+          targetService.selectedTarget;
+
+      final needsCtx = launchConfigService.needsDynamicResolution(
+        vscodeEntry,
+        [rawDeviceId, rawFlavor, rawTarget],
+      );
+      final varCtx =
+          needsCtx ? await launchConfigService.fetchVariableContext() : null;
+
+      final deviceId = rawDeviceId != null
+          ? await launchConfigService.resolveDynamicVariables(rawDeviceId,
+              ctx: varCtx)
+          : null;
+
+      if (deviceId == null) {
+        await context.window.showMessage(
+          'No device selected. Use the device picker to choose one.',
+          type: MessageType.error,
+        );
+        return;
+      }
+
+      final flutterCmd = await sdkManager.getFlutterCommand(root);
+      final args = [
+        mode == _FlutterLaunchMode.attach ? 'attach' : 'run',
+        '--machine',
+      ];
+      if (mode == _FlutterLaunchMode.debug) {
+        args.add('--start-paused');
+      }
+      args.addAll(['-d', deviceId]);
+
+      final flavor = rawFlavor != null
+          ? await launchConfigService.resolveDynamicVariables(rawFlavor,
+              ctx: varCtx)
+          : null;
+
+      if (mode != _FlutterLaunchMode.attach && flavor != null) {
+        args.addAll(['--flavor', flavor]);
+      }
+
+      // VS Code launch entry args: toolArgs first, then custom tool args.
+      final vscodeToolArgs = <String>[];
+      if (vscodeEntry != null) {
+        for (final arg in vscodeEntry.toolArgs) {
+          vscodeToolArgs.add(await launchConfigService.resolveDynamicVariables(
+            arg,
+            ctx: varCtx,
+          ));
+        }
+      }
+      args.addAll(vscodeToolArgs);
+      args.addAll(_stringListArgument(configuration, 'toolArgs'));
+
+      // Build mode: vscode flutterMode → build flag (only for `flutter run`).
+      if (mode == _FlutterLaunchMode.run) {
+        final vscodeBuildMode = _normalizeBuildMode(
+          vscodeEntry?.flutterMode,
+        );
+        final buildMode = _normalizeBuildMode(
+          vscodeBuildMode ??
+              _stringArgument(configuration, 'buildMode') ??
+              _selectedBuildMode,
+        );
+        if (buildMode == 'release') {
+          args.add('--release');
+        } else if (buildMode == 'profile') {
+          args.add('--profile');
+        }
+      }
+
+      String workingDirectory = root;
+      final selectedTarget = rawTarget != null
+          ? await launchConfigService.resolveDynamicVariables(rawTarget,
+              ctx: varCtx)
+          : null;
+
+      if (selectedTarget != null) {
+        final targetAbsolute = selectedTarget;
+        // Use the vscode entry's cwd if provided, otherwise walk up to find
+        // the nearest pubspec.yaml as the package root.
+        final rawCwd = vscodeEntry?.cwd;
+        final vscodeCwd = rawCwd != null
+            ? await launchConfigService.resolveDynamicVariables(rawCwd,
+                ctx: varCtx)
+            : null;
+
+        if (vscodeCwd != null) {
+          workingDirectory = vscodeCwd;
+        } else {
+          String packageRoot = path.dirname(targetAbsolute);
+          while (packageRoot != root && packageRoot.length >= root.length) {
+            final pubspecPath = path.join(packageRoot, 'pubspec.yaml');
+            if (await context.fs.exists(pubspecPath)) {
+              break;
+            }
+            packageRoot = path.dirname(packageRoot);
+          }
+          if (packageRoot.length < root.length) {
+            packageRoot = root;
+          }
+          workingDirectory = packageRoot;
+        }
+        final relativeTarget =
+            path.relative(targetAbsolute, from: workingDirectory);
+        args.addAll(['-t', relativeTarget]);
+      }
+
+      // Add extra launch entry args
+      if (vscodeEntry != null) {
+        for (final arg in vscodeEntry.args) {
+          args.add(await launchConfigService.resolveDynamicVariables(arg,
+              ctx: varCtx));
+        }
+      }
+
+      final title = switch (mode) {
+        _FlutterLaunchMode.attach => 'Flutter Attach',
+        _FlutterLaunchMode.debug => 'Flutter Debug',
+        _FlutterLaunchMode.run => 'Flutter Run',
+      };
+      final action = switch (mode) {
+        _FlutterLaunchMode.attach => 'Attaching',
+        _FlutterLaunchMode.debug => 'Debugging',
+        _FlutterLaunchMode.run => 'Running',
+      };
 
       await context.window.showMessage(
         '$action on $deviceId using ${flutterCmd.join(' ')}',
@@ -663,10 +840,20 @@ class RunService {
         '$action: $executable ${finalArgs.join(' ')}\nWorking Directory: $workingDirectory',
       );
 
+      final rawEnv = vscodeEntry?.env;
+      final vscodeEnv = <String, String>{};
+      if (rawEnv != null) {
+        for (final entry in rawEnv.entries) {
+          vscodeEnv[entry.key] = await launchConfigService
+              .resolveDynamicVariables(entry.value, ctx: varCtx);
+        }
+      }
+
       _process = await Process.start(
         executable,
         finalArgs,
         workingDirectory: workingDirectory,
+        environment: vscodeEnv.isNotEmpty ? vscodeEnv : null,
       );
 
       _isRunning = true;
@@ -675,7 +862,8 @@ class RunService {
         _FlutterLaunchMode.debug => LumideLaunchKind.debug,
         _FlutterLaunchMode.run => LumideLaunchKind.run,
       };
-      _activeLaunchConfigurationId = configuration?.id ?? launchConfigCurrent;
+      final activeConfig = await _currentLaunchConfiguration();
+      _activeLaunchConfigurationId = configuration?.id ?? activeConfig.id;
       await context.launch.didStart(
         LumideLaunchEvent(
           providerId: launchProviderFlutter,
@@ -756,7 +944,6 @@ class RunService {
     if (parts.isEmpty) return null;
     return parts.join(' | ');
   }
-
 
   Future<String?> _configuredFlavor() async {
     return _selectedFlavor;
@@ -883,9 +1070,11 @@ class RunService {
     return args.map(_quoteCommandArg).join(' ');
   }
 
+  static final _whitespaceRegex = RegExp(r'\s');
+
   String _quoteCommandArg(String arg) {
     if (arg.isEmpty) return "''";
-    if (!arg.contains(RegExp(r'\s')) &&
+    if (!arg.contains(_whitespaceRegex) &&
         !arg.contains('"') &&
         !arg.contains("'") &&
         !arg.contains('\\')) {
@@ -2100,9 +2289,10 @@ class RunService {
     };
   }
 
+  static final _dartIdentifierRegex = RegExp(r'^[A-Za-z_][A-Za-z0-9_]*$');
+
   bool _isValidDartIdentifier(String value) {
-    final pattern = RegExp(r'^[A-Za-z_][A-Za-z0-9_]*$');
-    return pattern.hasMatch(value);
+    return _dartIdentifierRegex.hasMatch(value);
   }
 
   Future<LumideDebugEvaluationResult?> evaluate(
