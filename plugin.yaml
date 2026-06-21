@@ -91,6 +91,21 @@ contributes:
     - id: flutter.openDevToolsWebview
       title: 'Flutter: Open DevTools'
       category: 'Flutter'
+    - id: flutter.context.pubGet
+      title: 'Flutter: Pub Get Here'
+      category: 'Flutter'
+    - id: flutter.context.clean
+      title: 'Flutter: Clean Here'
+      category: 'Flutter'
+    - id: flutter.context.setTarget
+      title: 'Flutter: Set as Target'
+      category: 'Flutter'
+    - id: flutter.context.create
+      title: 'Flutter: New Project Here'
+      category: 'Flutter'
+    - id: flutter.context.newDartFile
+      title: 'Flutter: New Dart File'
+      category: 'Flutter'
   keybindings:
     - command: flutter.hotReload
       key: 'cmd+\'

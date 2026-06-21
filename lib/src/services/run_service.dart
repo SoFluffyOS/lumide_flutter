@@ -211,6 +211,15 @@ class RunService {
 
   Future<void> _showRunControls({required bool isRunning}) async {
     if (isRunning) {
+      await context.menus.registerAction(
+        const LumideMenuAction(
+          id: menuFlutterDevToolsAddPane,
+          title: 'Flutter DevTools',
+          command: cmdFlutterOpenDevToolsWebview,
+          location: LumideMenuLocation.addPane,
+          priority: 100,
+        ),
+      );
       await context.toolbar.registerItem(
         id: cmdFlutterHotReload,
         icon: iconZap,
@@ -231,6 +240,7 @@ class RunService {
     await context.toolbar.unregisterItem(cmdFlutterStop);
     await context.toolbar.unregisterItem(cmdFlutterHotReload);
     await context.toolbar.unregisterItem(cmdFlutterHotRestart);
+    await context.menus.unregisterAction(menuFlutterDevToolsAddPane);
   }
 
   Future<List<LumideLaunchConfiguration>> _resolveLaunchConfigurations(
@@ -2663,7 +2673,13 @@ class RunService {
   }
 
   Future<void> openDevTools() async {
-    if (!_isRunning) return;
+    if (!_isRunning) {
+      await context.window.showMessage(
+        'Start a Flutter app before opening DevTools.',
+        type: MessageType.warning,
+      );
+      return;
+    }
 
     final url = await _getOrCreateDevToolsUrl();
     if (url != null) {
@@ -2678,7 +2694,13 @@ class RunService {
   }
 
   Future<void> openDevToolsInWebview() async {
-    if (!_isRunning) return;
+    if (!_isRunning) {
+      await context.window.showMessage(
+        'Start a Flutter app before opening DevTools.',
+        type: MessageType.warning,
+      );
+      return;
+    }
 
     final url = await _getOrCreateDevToolsUrl();
     if (url != null) {

@@ -271,6 +271,31 @@ class TargetService {
     await _notifyChanged();
   }
 
+  Future<void> setTargetFromContext(Map<String, dynamic>? args) async {
+    final candidate = projectService.pathFromMenuContext(args);
+    if (candidate == null || path.extension(candidate) != '.dart') {
+      await context.window.showMessage(
+        'Select a Dart file to use as a Flutter target.',
+        type: MessageType.warning,
+      );
+      return;
+    }
+
+    if (!await context.fs.exists(candidate)) {
+      await context.window.showMessage(
+        'Target file not found: $candidate',
+        type: MessageType.error,
+      );
+      return;
+    }
+
+    await setSelectedTarget(candidate);
+    await refreshTargets();
+    await context.window.showMessage(
+      'Flutter target set to ${path.basename(candidate)}.',
+    );
+  }
+
   Future<void> setSelectedVscodeEntry(VscodeLaunchEntry entry) async {
     _selectedVscodeEntry = entry;
     _selectedTarget = null;
