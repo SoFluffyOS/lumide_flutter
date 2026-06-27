@@ -1,3 +1,16 @@
+## 1.10.0 (2026-06-27)
+
+> This release requires Lumide 0.14.0 and later. Do not update if you are using older versions.
+
+### 🚀 New Features
+- Add Flutter DevTools pane in Add Pane menu.
+- Add menu actions under Files pane:
+  - New Dart file.
+  - Create Flutter project here.
+  - Set as Flutter target.
+  - Flutter Pub Get.
+  - Flutter Clean.
+
 ## 1.9.0 (2026-06-20)
 
 > This release requires Lumide 0.12.0 and later. Do not update if you are using older versions.
