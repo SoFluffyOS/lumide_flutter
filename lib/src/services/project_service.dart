@@ -57,9 +57,31 @@ class ProjectService {
 
   ProjectService(this.context);
 
+  Future<String> getWorkspaceRoot() async {
+    final workspaceRootUri = await context.workspace.getRootUri();
+    if (workspaceRootUri == null || workspaceRootUri.isEmpty) {
+      throw Exception(
+          'Open a workspace folder before creating a Flutter project.');
+    }
+    return workspaceRootUri;
+  }
+
+  void clearCaches() {
+    _cachedProjects.clear();
+    _projectsLoaded = false;
+    _cachedTargets.clear();
+    _targetsLoaded = false;
+  }
+
   /// Returns the root path of the Flutter project.
   /// Relies firmly on the host IDE workspace API.
   Future<String> getProjectRoot([String? uri]) async {
+    final hintedPath = _pathFromUriOrPath(uri);
+    if (hintedPath != null) {
+      final hintedRoot = await findProjectRootForPath(hintedPath);
+      if (hintedRoot != null) return hintedRoot;
+    }
+
     final workspaceRootUri = await context.workspace.getRootUri();
     if (workspaceRootUri != null) {
       if (await context.fs
@@ -70,6 +92,111 @@ class ProjectService {
 
     throw Exception(
         'Workspace root containing a pubspec.yaml is required to use the Flutter plugin.');
+  }
+
+  Future<String?> findProjectRootForPath(String fileOrFolderPath) async {
+    var current = fileOrFolderPath;
+    final extension = path.extension(current);
+    if (extension.isNotEmpty) {
+      current = path.dirname(current);
+    }
+
+    final workspaceRoot = await context.workspace.getRootUri();
+    final normalizedWorkspaceRoot =
+        workspaceRoot == null ? null : path.normalize(workspaceRoot);
+
+    while (true) {
+      final pubspecPath = path.join(current, 'pubspec.yaml');
+      if (await context.fs.exists(pubspecPath)) return current;
+
+      final parent = path.dirname(current);
+      if (parent == current) return null;
+      if (normalizedWorkspaceRoot != null &&
+          path.normalize(current) == normalizedWorkspaceRoot) {
+        return null;
+      }
+      current = parent;
+    }
+  }
+
+  String? _pathFromUriOrPath(String? uriOrPath) {
+    if (uriOrPath == null || uriOrPath.isEmpty) return null;
+    final parsed = Uri.tryParse(uriOrPath);
+    if (parsed != null && parsed.isScheme('file')) {
+      return parsed.toRealPath();
+    }
+    return uriOrPath;
+  }
+
+  String? pathFromMenuContext(Map<String, dynamic>? args) {
+    final contextMap = _mapValue(args, 'context');
+    if (contextMap == null) return null;
+
+    final directFile = _mapValue(contextMap, 'file');
+    if (_pathValue(directFile) case final filePath?) return filePath;
+
+    final tab = _mapValue(contextMap, 'tab');
+    final tabFile = _mapValue(tab, 'file');
+    if (_pathValue(tabFile) case final tabPath?) return tabPath;
+
+    final primary = _mapValue(contextMap, 'primary');
+    if (_pathValue(primary) case final primaryPath?) return primaryPath;
+
+    if (contextMap['selectedPaths'] case final List paths
+        when paths.isNotEmpty) {
+      final first = paths.first;
+      if (first is String && first.isNotEmpty) return first;
+    }
+
+    final root = _mapValue(contextMap, 'root');
+    return _pathValue(root);
+  }
+
+  String? folderFromMenuContext(Map<String, dynamic>? args) {
+    final contextMap = _mapValue(args, 'context');
+    if (contextMap == null) return null;
+
+    final primary = _mapValue(contextMap, 'primary');
+    final primaryPath = _pathValue(primary);
+    if (primaryPath != null) {
+      final type = primary?['type'];
+      if (type == 'directory') return primaryPath;
+      if (type == 'file') return path.dirname(primaryPath);
+    }
+
+    final contextPath = pathFromMenuContext(args);
+    if (contextPath == null) return null;
+    if (path.extension(contextPath).isNotEmpty) {
+      return path.dirname(contextPath);
+    }
+    return contextPath;
+  }
+
+  Future<String?> projectRootFromMenuContext(
+    Map<String, dynamic>? args,
+  ) async {
+    final contextPath = pathFromMenuContext(args);
+    if (contextPath == null) return null;
+    return findProjectRootForPath(contextPath);
+  }
+
+  Map<String, dynamic>? _mapValue(Map<dynamic, dynamic>? source, String key) {
+    if (source == null) return null;
+    final value = source[key];
+    if (value is Map<String, dynamic>) return value;
+    if (value is Map) return Map<String, dynamic>.from(value);
+    return null;
+  }
+
+  String? _pathValue(Map<String, dynamic>? map) {
+    if (map == null) return null;
+    if (map['path'] case final String path when path.isNotEmpty) {
+      return path;
+    }
+    if (map['uri'] case final String uri when uri.isNotEmpty) {
+      return _pathFromUriOrPath(uri);
+    }
+    return null;
   }
 
   /// Scans the workspace to find all folders containing a `pubspec.yaml`.
