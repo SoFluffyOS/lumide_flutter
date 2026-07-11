@@ -150,7 +150,7 @@ class LaunchConfigService {
     _log('[LaunchConfig] looking for launch.json at: $jsonPath');
 
     final file = io.File(jsonPath);
-    if (!file.existsSync()) {
+    if (!await file.exists()) {
       _log(
           '[LaunchConfig] launch.json not found — no VS Code configurations loaded');
       _entries = const [];
@@ -183,6 +183,7 @@ class LaunchConfigService {
       }
 
       final entries = <VscodeLaunchEntry>[];
+      final seenNames = <String>{};
       for (final config in configurations) {
         try {
           if (config is! Map<String, dynamic>) continue;
@@ -191,8 +192,16 @@ class LaunchConfigService {
 
           if (config['request'] != 'launch') continue;
 
-          final name = config['name'] as String?;
-          if (name == null || name.isEmpty) continue;
+          final rawName = config['name'] as String?;
+          if (rawName == null || rawName.isEmpty) continue;
+
+          var name = rawName;
+          var suffix = 2;
+          while (seenNames.contains(name)) {
+            name = '$rawName ($suffix)';
+            suffix++;
+          }
+          seenNames.add(name);
 
           final program = config['program'] as String? ?? 'lib/main.dart';
           if (program.isEmpty) continue;
@@ -278,11 +287,11 @@ class LaunchConfigService {
   /// Checks whether [filePath]'s nearest `pubspec.yaml` references Flutter.
   Future<bool> _isFlutterProject(String filePath, String? root) async {
     var curr = path.dirname(filePath);
-    final boundary = root ?? path.rootPrefix(filePath);
+    final boundary = path.normalize(root ?? path.rootPrefix(filePath));
     while (curr.length >= boundary.length) {
       final pubspecPath = path.join(curr, 'pubspec.yaml');
       final file = io.File(pubspecPath);
-      if (file.existsSync()) {
+      if (await file.exists()) {
         try {
           final content = await file.readAsString();
           return content.contains('sdk: flutter') ||
@@ -448,10 +457,10 @@ class LaunchConfigService {
         if (workspaceRoot != null && path.isWithin(workspaceRoot, filePath)) {
           final relative = path.relative(filePath, from: workspaceRoot);
           if (varName == 'relativeFile') {
-            return path.join(workspaceRoot, relative);
+            return relative;
           }
           if (varName == 'relativeFileDirname') {
-            return path.join(workspaceRoot, path.dirname(relative));
+            return path.dirname(relative);
           }
         }
       }

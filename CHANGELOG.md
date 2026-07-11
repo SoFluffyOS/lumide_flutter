@@ -1,3 +1,16 @@
+## 1.11.0 (2026-07-11)
+
+> This release requires a Lumide 0.15.0 and later. Do not update if you are using an older version.
+
+### 🚀 New Features
+
+- Support `.sofluffy/lumide/launch.json` Flutter configurations.
+
+### ⬆️ Upgrade lumide_api
+
+- Bump `lumide_api` dependency to ^1.7.0` to support Lumide launch
+  configurations.
+
 ## 1.10.0 (2026-06-27)
 
 > This release requires Lumide 0.14.0 and later. Do not update if you are using older versions.

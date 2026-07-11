@@ -31,7 +31,7 @@ class TargetService {
 
   Future<void> _loadCache() async {
     final cachePath = await _getCachePath();
-    if (cachePath == null || !io.File(cachePath).existsSync()) return;
+    if (cachePath == null || !await io.File(cachePath).exists()) return;
     try {
       final cached = (await io.File(cachePath).readAsString()).trim();
       if (cached.isEmpty) return;
@@ -49,7 +49,7 @@ class TargetService {
         return;
       }
 
-      if (io.File(cached).existsSync()) {
+      if (await io.File(cached).exists()) {
         _selectedTarget = cached;
         _selectedVscodeEntry = null;
       }
@@ -66,8 +66,8 @@ class TargetService {
     if (cachePath == null) return;
     try {
       final dir = io.Directory(path.dirname(cachePath));
-      if (!dir.existsSync()) {
-        dir.createSync(recursive: true);
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
       }
       await io.File(cachePath).writeAsString(cacheValue);
     } catch (_) {}
@@ -347,7 +347,7 @@ class TargetService {
     if (root != null) {
       final fullPath =
           path.isAbsolute(trimmed) ? trimmed : path.join(root, trimmed);
-      if (io.File(fullPath).existsSync()) {
+      if (await io.File(fullPath).exists()) {
         _selectedTarget = fullPath;
         await _saveCache();
         await _notifyChanged();
@@ -451,7 +451,7 @@ class TargetService {
       var curr = path.dirname(filePath);
       while (curr.length >= root.length) {
         final pubspecPath = path.join(curr, 'pubspec.yaml');
-        if (io.File(pubspecPath).existsSync()) {
+        if (await io.File(pubspecPath).exists()) {
           return pubspecPath;
         }
         final parent = path.dirname(curr);
@@ -459,7 +459,7 @@ class TargetService {
         curr = parent;
       }
       final rootPubspec = path.join(root, 'pubspec.yaml');
-      if (io.File(rootPubspec).existsSync()) {
+      if (await io.File(rootPubspec).exists()) {
         return rootPubspec;
       }
     } catch (_) {}
