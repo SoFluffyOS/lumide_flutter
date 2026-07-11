@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Lumide Flutter Launch Configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "target": {
+      "type": "string",
+      "title": "Target",
+      "description": "Dart entry point to run, relative to the workspace or using a Lumide variable.",
+      "default": "${workspaceFolder}/lib/main.dart"
+    },
+    "cwd": {
+      "type": "string",
+      "title": "Working directory",
+      "description": "Directory where the Flutter command runs. Leave empty to use the workspace root."
+    },
+    "deviceId": {
+      "type": "string",
+      "title": "Device ID",
+      "description": "Optional Flutter device identifier. Leave empty to use the selected device."
+    },
+    "buildMode": {
+      "title": "Build mode",
+      "description": "Flutter build mode used for this configuration.",
+      "enum": ["debug", "profile", "release"],
+      "default": "debug"
+    },
+    "flavor": {
+      "type": "string",
+      "title": "Flavor",
+      "description": "Optional product flavor passed to Flutter."
+    },
+    "toolArgs": {
+      "type": "array",
+      "title": "Flutter tool arguments",
+      "description": "Arguments passed to the Flutter tool before the target. Enter one argument per line.",
+      "items": { "type": "string" }
+    },
+    "args": {
+      "type": "array",
+      "title": "Application arguments",
+      "description": "Arguments passed to the Dart application. Enter one argument per line.",
+      "items": { "type": "string" }
+    },
+    "env": {
+      "type": "object",
+      "title": "Environment variables",
+      "description": "Environment variables for the launched process. Enter one KEY=VALUE pair per line.",
+      "additionalProperties": { "type": "string" }
+    }
+  }
+}

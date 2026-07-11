@@ -7,6 +7,7 @@ import 'package:lumide_flutter/src/constants.dart';
 import 'package:lumide_flutter/src/services/daemon_service.dart';
 import 'package:lumide_flutter/src/services/device_service.dart';
 import 'package:lumide_flutter/src/services/launch_config_service.dart';
+import 'package:lumide_flutter/src/services/launch_source_resolver.dart';
 import 'package:lumide_flutter/src/services/project_service.dart';
 import 'package:lumide_flutter/src/services/sdk_manager.dart';
 import 'package:lumide_flutter/src/services/target_service.dart';
@@ -169,6 +170,8 @@ class RunService {
     await _loadLaunchOptionCaches();
 
     context.launch.onResolveConfigurations(_resolveLaunchConfigurations);
+    context.launch.onResolveConfiguration(_resolveSourceConfiguration);
+    context.launch.onImportConfiguration(importVscodeFlutterLaunch);
     context.launch.onConfigure(_handleConfigureRequest);
     context.launch.onLaunch(_handleLaunchRequest);
 
@@ -184,7 +187,30 @@ class RunService {
           LumideLaunchKind.debug,
           LumideLaunchKind.attach,
         ],
+        defaultKinds: const [
+          LumideLaunchKind.run,
+          LumideLaunchKind.debug,
+        ],
         icon: iconPlay,
+        configurationSchema: 'schemas/launch.schema.json',
+        configurationSnippets: const [
+          {
+            'name': 'Flutter Main',
+            'kinds': ['run', 'debug'],
+            'config': {
+              'target': r'${workspaceFolder}/lib/main.dart',
+              'buildMode': 'debug',
+            },
+          },
+        ],
+        configurationImports: const [
+          LumideLaunchImportDescriptor(
+            format: 'vscode',
+            selectors: {
+              'type': ['dart'],
+            },
+          ),
+        ],
         priority: 100,
       ),
       context.launch.updateConfigurations(
@@ -250,6 +276,19 @@ class RunService {
     return await _currentLaunchConfigurations();
   }
 
+  Future<LumideLaunchResolution> _resolveSourceConfiguration(
+    LumideLaunchSourceConfiguration source,
+  ) async {
+    return resolveFlutterLaunchSource(
+      source,
+      projectRoot: await projectService.getProjectRoot(),
+      selectedDeviceId: deviceService.selectedDeviceId,
+      deviceLabel: deviceService.displayLabel,
+      deviceTooltip: deviceService.displayTooltip,
+      deviceIcon: deviceService.displayIcon,
+    );
+  }
+
   Future<void> _updateLaunchConfigurations() async {
     await context.launch.updateConfigurations(
       launchProviderFlutter,
@@ -272,11 +311,13 @@ class RunService {
         id: '$vscodeConfigPrefix${entry.name}',
         label: entry.name,
         description: path.basename(entry.program),
+        detail: 'VS Code compatibility',
         iconPath: entry.iconPath,
         noTint: true,
         isDefault: selectedVscode?.name == entry.name,
         kind: LumideLaunchKind.run,
         arguments: {
+          '_compatibilitySource': 'vscode',
           'canLaunch': hasFixedDevice || deviceService.selectedDeviceId != null,
           'targetLabel': entry.name,
           'targetTooltip': entry.program,
@@ -332,6 +373,7 @@ class RunService {
             'No device selected',
         iconPath: vscodeEntry.iconPath,
         noTint: true,
+        detail: 'VS Code compatibility',
         isDefault: true,
         kind: LumideLaunchKind.run,
         arguments: {
@@ -388,8 +430,11 @@ class RunService {
       icon: configIconPath != null ? null : (configIcon ?? iconTarget),
       iconPath: configIconPath,
       noTint: configNoTint,
-      isDefault:
-          selectedTarget == null ? target == null : target == selectedTarget,
+      deduplicationKey:
+          resolvedTarget == null ? null : path.normalize(resolvedTarget),
+      isDefault: selectedTarget == null
+          ? target == null
+          : (target != null && path.equals(target, selectedTarget)),
       options: [
         LumideLaunchOption(
           id: 'flavor',
@@ -456,6 +501,19 @@ class RunService {
     LumideLaunchConfigureRequest request,
   ) async {
     if (request.providerId != launchProviderFlutter) return null;
+
+    switch (request.configuration) {
+      case LumideLaunchConfiguration config
+          when config.id.startsWith(vscodeConfigPrefix):
+        final name = config.id.substring(vscodeConfigPrefix.length);
+        if (launchConfigService.entries.where((e) => e.name == name).firstOrNull
+            case final entry? when targetService.selectedVscodeEntry != entry) {
+          await targetService.setSelectedVscodeEntry(entry);
+        }
+      case LumideLaunchConfiguration(arguments: {'target': final String target})
+          when targetService.selectedTarget != target:
+        await targetService.setSelectedTarget(target);
+    }
 
     switch (request.actionId) {
       case 'target':
@@ -729,7 +787,6 @@ class RunService {
         return;
       }
 
-      final flutterCmd = await sdkManager.getFlutterCommand(root);
       final args = [
         mode == _FlutterLaunchMode.attach ? 'attach' : 'run',
         '--machine',
@@ -779,24 +836,30 @@ class RunService {
       }
 
       String workingDirectory = root;
+      final rawCwd = _stringArgument(configuration, 'cwd') ?? vscodeEntry?.cwd;
+      final configuredCwd = rawCwd != null
+          ? await launchConfigService.resolveDynamicVariables(
+              rawCwd,
+              ctx: varCtx,
+            )
+          : null;
+      if (configuredCwd != null) {
+        workingDirectory = path.isAbsolute(configuredCwd)
+            ? configuredCwd
+            : path.join(root, configuredCwd);
+      }
       final selectedTarget = rawTarget != null
           ? await launchConfigService.resolveDynamicVariables(rawTarget,
               ctx: varCtx)
           : null;
 
       if (selectedTarget != null) {
-        final targetAbsolute = selectedTarget;
-        // Use the vscode entry's cwd if provided, otherwise walk up to find
+        final targetAbsolute = path.isAbsolute(selectedTarget)
+            ? selectedTarget
+            : path.join(workingDirectory, selectedTarget);
+        // Use the configured cwd if provided, otherwise walk up to find
         // the nearest pubspec.yaml as the package root.
-        final rawCwd = vscodeEntry?.cwd;
-        final vscodeCwd = rawCwd != null
-            ? await launchConfigService.resolveDynamicVariables(rawCwd,
-                ctx: varCtx)
-            : null;
-
-        if (vscodeCwd != null) {
-          workingDirectory = vscodeCwd;
-        } else {
+        if (configuredCwd == null) {
           String packageRoot = path.dirname(targetAbsolute);
           while (packageRoot != root && packageRoot.length >= root.length) {
             final pubspecPath = path.join(packageRoot, 'pubspec.yaml');
@@ -822,6 +885,8 @@ class RunService {
               ctx: varCtx));
         }
       }
+      args.addAll(
+          _stringListArgument(configuration, 'args', fallback: const []));
 
       final title = switch (mode) {
         _FlutterLaunchMode.attach => 'Flutter Attach',
@@ -833,6 +898,7 @@ class RunService {
         _FlutterLaunchMode.debug => 'Debugging',
         _FlutterLaunchMode.run => 'Running',
       };
+      final flutterCmd = await sdkManager.getFlutterCommand(workingDirectory);
 
       await context.window.showMessage(
         '$action on $deviceId using ${flutterCmd.join(' ')}',
@@ -858,6 +924,7 @@ class RunService {
               .resolveDynamicVariables(entry.value, ctx: varCtx);
         }
       }
+      vscodeEnv.addAll(_stringMapArgument(configuration, 'env'));
 
       _process = await Process.start(
         executable,
@@ -931,13 +998,25 @@ class RunService {
 
   List<String> _stringListArgument(
     LumideLaunchConfiguration? configuration,
-    String key,
-  ) {
+    String key, {
+    List<String>? fallback,
+  }) {
     final value = configuration?.arguments[key];
     if (value is List) {
       return value.whereType<String>().where((arg) => arg.isNotEmpty).toList();
     }
-    return _customToolArgs;
+    return fallback ?? _customToolArgs;
+  }
+
+  Map<String, String> _stringMapArgument(
+    LumideLaunchConfiguration? configuration,
+    String key,
+  ) {
+    final value = configuration?.arguments[key];
+    if (value is! Map) return const {};
+    return value.map(
+      (mapKey, mapValue) => MapEntry(mapKey.toString(), mapValue.toString()),
+    );
   }
 
   String? _configurationDetail(
