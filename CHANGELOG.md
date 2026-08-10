@@ -1,3 +1,18 @@
+## 1.12.0
+
+> This requires a Lumide 0.19.0 and later. Do not update if you are using an older version.
+
+### 🚀 New Features
+
+- Add Dart snippet contributions via `lumide_api` 1.9.0 `contributes.snippets`
+  (`stless`, `stful`, `stanim`, `listb`, `streamb`, `matapp`, builders, lifecycle, …).
+- Add heuristic Flutter import assist: sync material/cupertino/widgets and related imports on save, plus **Flutter: Ensure Imports**.
+- Settings `flutter.autoImportOnSave` and `flutter.removeUnusedImportsOnSave` (both default true).
+
+### ⬆️ Upgrade lumide_api
+
+- Bump `lumide_api` dependency to `^1.9.0` for snippet contributions.
+
 ## 1.11.0 (2026-07-11)
 
 > This release requires a Lumide 0.15.0 and later. Do not update if you are using an older version.
