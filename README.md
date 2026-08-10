@@ -34,6 +34,24 @@ The official Flutter extension for [Lumide IDE](https://lumide.dev).
 - **Status Bar**: Shows the active Flutter SDK version. Click to access the *Flutter Tools* menu.
 - **Toolbar**: Context-aware controls (Run, Stop, Reload, Restart) appear when a Flutter project is active.
 - **Debug Navigation**: When a breakpoint is hit, Lumide jumps to the stopped source location and lets you navigate by stack frame or breakpoint entry.
+- **Dart snippets**: Short Flutter prefixes in `.dart` files (`stless`, `listb`, `streamb`, …).
+- **Import assist**: Heuristically adds/removes managed Flutter imports on save (or via **Flutter: Ensure Imports**). Text snippets do not go through Dart completion, so they do not trigger LSP auto-import — save the file or run the command after inserting a snippet.
+
+### Snippets
+
+| Prefix | Description |
+|---|---|
+| `stless` / `stful` / `stanim` | Stateless / Stateful / animated Stateful widget |
+| `matapp` / `cupapp` | `MaterialApp` / `CupertinoApp` starter |
+| `inhw` | `InheritedWidget` |
+| `fbuild` / `initS` / `dis` / `didUpdate` / `didChange` | Build + State lifecycle |
+| `listb` / `lists` | `ListView.builder` / `separated` |
+| `gridb` / `gridc` / `gride` | `GridView` constructors |
+| `csv` / `scsv` | `CustomScrollView` / `SingleChildScrollView` |
+| `streamb` / `futureb` / `animb` / `sbuilder` / `layoutb` / `orib` / `vlb` / `tweenb` | Common builders |
+| `painter` / `clipper` | `CustomPainter` / `CustomClipper` |
+| `impm` / `impc` / `impt` | Material / Cupertino / flutter_test imports |
+| `ftw` / `dprint` | `testWidgets` / `debugPrint` |
 
 ## Commands
 
@@ -52,6 +70,7 @@ Access these via the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`):
 | `flutter.hotRestart` | **Flutter: Hot Restart** (`Cmd+Shift+\`) | Restart app state |
 | `flutter.stop` | **Flutter: Stop App** | Terminate process |
 | `flutter.openDevToolsWebview` | **Flutter: Open DevTools** | Open in split pane |
+| `flutter.ensureImports` | **Flutter: Ensure Imports** | Sync managed Flutter imports for the active file |
 
 ## Configuration
 
@@ -62,6 +81,8 @@ Customize behavior in your `.lumide/settings.json` or Workspace Settings:
 | `flutter.hotReloadOnSave` | `true` | Trigger hot reload when saving `.dart` files |
 | `flutter.clearLogOnHotRestart` | `true` | Clear the output channel when restarting |
 | `flutter.logEntryLimit` | `5000` | Max lines in the Flutter output channel |
+| `flutter.autoImportOnSave` | `true` | Sync Flutter imports when saving `.dart` files |
+| `flutter.removeUnusedImportsOnSave` | `true` | Also remove unused managed Flutter imports on save |
 
 ## Requirements
 
