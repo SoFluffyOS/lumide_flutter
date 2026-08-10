@@ -1,6 +1,6 @@
 name: lumide_flutter
 description: "Flutter extension for Lumide"
-version: 1.11.0
+version: 1.12.0
 homepage: https://lumide.dev
 repository: https://github.com/SoFluffyOS/lumide_flutter
 
@@ -15,7 +15,7 @@ environment:
   sdk: '>=3.0.0 <4.0.0'
 
 dependencies:
-  lumide_api: 1.7.0
+  lumide_api: ^1.9.0
   vm_service: 15.0.2
   web_socket_channel: 3.0.3
   path: 1.9.1

@@ -44,6 +44,20 @@ configuration:
     default: 10
     title: 'Log Pressure Threshold'
     description: 'When pending log count exceeds this, skip expensive VM lookups for faster processing.'
+  - key: flutter.autoImportOnSave
+    type: boolean
+    default: true
+    title: 'Auto Import on Save'
+    description: >
+      When saving a .dart file in a Flutter project, automatically add missing
+      imports for flutter/material, cupertino, widgets, and related libraries.
+  - key: flutter.removeUnusedImportsOnSave
+    type: boolean
+    default: true
+    title: 'Remove Unused Imports on Save'
+    description: >
+      When auto-import on save is enabled, also remove unused managed Flutter
+      imports based on symbol heuristics.
 contributes:
   commands:
     - id: flutter.doctor
@@ -106,6 +120,12 @@ contributes:
     - id: flutter.context.newDartFile
       title: 'Flutter: New Dart File'
       category: 'Flutter'
+    - id: flutter.ensureImports
+      title: 'Flutter: Ensure Imports'
+      category: 'Flutter'
+  snippets:
+    - language: dart
+      path: snippets/dart.json
   keybindings:
     - command: flutter.hotReload
       key: 'cmd+\'
