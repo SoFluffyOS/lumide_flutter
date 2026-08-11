@@ -7,6 +7,7 @@ import 'package:lumide_flutter/src/constants.dart';
 import 'package:lumide_flutter/src/services/daemon_service.dart';
 import 'package:lumide_flutter/src/services/device_service.dart';
 import 'package:lumide_flutter/src/services/launch_config_service.dart';
+import 'package:lumide_flutter/src/services/launch_path_utils.dart';
 import 'package:lumide_flutter/src/services/launch_source_resolver.dart';
 import 'package:lumide_flutter/src/services/project_service.dart';
 import 'package:lumide_flutter/src/services/sdk_manager.dart';
@@ -835,7 +836,8 @@ class RunService {
         }
       }
 
-      String workingDirectory = root;
+      final normalizedRoot = normalizeLaunchPath(root);
+      String workingDirectory = normalizedRoot;
       final rawCwd = _stringArgument(configuration, 'cwd') ?? vscodeEntry?.cwd;
       final configuredCwd = rawCwd != null
           ? await launchConfigService.resolveDynamicVariables(
@@ -844,9 +846,11 @@ class RunService {
             )
           : null;
       if (configuredCwd != null) {
-        workingDirectory = path.isAbsolute(configuredCwd)
-            ? configuredCwd
-            : path.join(root, configuredCwd);
+        workingDirectory = normalizeLaunchPath(
+          path.isAbsolute(configuredCwd)
+              ? configuredCwd
+              : path.join(normalizedRoot, configuredCwd),
+        );
       }
       final selectedTarget = rawTarget != null
           ? await launchConfigService.resolveDynamicVariables(rawTarget,
@@ -854,39 +858,53 @@ class RunService {
           : null;
 
       if (selectedTarget != null) {
-        final targetAbsolute = path.isAbsolute(selectedTarget)
-            ? selectedTarget
-            : path.join(workingDirectory, selectedTarget);
+        final targetAbsolute = normalizeLaunchPath(
+          path.isAbsolute(selectedTarget)
+              ? selectedTarget
+              : path.join(workingDirectory, selectedTarget),
+        );
         // Use the configured cwd if provided, otherwise walk up to find
         // the nearest pubspec.yaml as the package root.
         if (configuredCwd == null) {
-          String packageRoot = path.dirname(targetAbsolute);
-          while (packageRoot != root && packageRoot.length >= root.length) {
+          var packageRoot = path.dirname(targetAbsolute);
+          while (path.equals(packageRoot, normalizedRoot) ||
+              path.isWithin(normalizedRoot, packageRoot)) {
             final pubspecPath = path.join(packageRoot, 'pubspec.yaml');
             if (await context.fs.exists(pubspecPath)) {
               break;
             }
+            if (path.equals(packageRoot, normalizedRoot)) {
+              packageRoot = normalizedRoot;
+              break;
+            }
             packageRoot = path.dirname(packageRoot);
           }
-          if (packageRoot.length < root.length) {
-            packageRoot = root;
+          if (!path.equals(packageRoot, normalizedRoot) &&
+              !path.isWithin(normalizedRoot, packageRoot)) {
+            packageRoot = normalizedRoot;
           }
-          workingDirectory = packageRoot;
+          workingDirectory = normalizeLaunchPath(packageRoot);
         }
-        final relativeTarget =
-            path.relative(targetAbsolute, from: workingDirectory);
+        final relativeTarget = normalizeLaunchPath(
+          path.relative(targetAbsolute, from: workingDirectory),
+        );
         args.addAll(['-t', relativeTarget]);
       }
 
-      // Add extra launch entry args
+      // Add application arguments after the target.
       if (vscodeEntry != null) {
         for (final arg in vscodeEntry.args) {
-          args.add(await launchConfigService.resolveDynamicVariables(arg,
-              ctx: varCtx));
+          args.add(
+            await launchConfigService.resolveDynamicVariables(
+              arg,
+              ctx: varCtx,
+            ),
+          );
         }
       }
       args.addAll(
-          _stringListArgument(configuration, 'args', fallback: const []));
+        _stringListArgument(configuration, 'args', fallback: const []),
+      );
 
       final title = switch (mode) {
         _FlutterLaunchMode.attach => 'Flutter Attach',

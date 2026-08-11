@@ -35,6 +35,7 @@ class FlutterPlugin extends LumidePlugin {
         targetService, daemonService, launchConfigService);
     deviceService.onDidChange = runService.refreshLaunchConfigurations;
     targetService.onDidChange = runService.refreshLaunchConfigurations;
+    launchConfigService.onDidChange = runService.refreshLaunchConfigurations;
 
     // Inject RunService into FlutterService (break circular dependency)
     flutterService.setRunService(runService);
@@ -47,9 +48,9 @@ class FlutterPlugin extends LumidePlugin {
       statusBarService.init(),
       deviceService.init(),
       launchConfigService.init(),
-      targetService.init(),
     ]);
-    launchConfigService.onDidChange = runService.refreshLaunchConfigurations;
+    await targetService.init();
+    await runService.refreshLaunchConfigurations();
 
     // 3. Environment Check (asynchronous in background)
     unawaited(flutterService.checkSdk().then((hasSdk) async {

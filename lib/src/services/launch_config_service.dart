@@ -167,8 +167,7 @@ class LaunchConfigService {
 
     try {
       final raw = await file.readAsString();
-      final stripped = _stripComments(raw);
-      final decoded = jsonDecode(stripped);
+      final decoded = decodeVscodeLaunchJsonc(raw);
 
       if (decoded is! Map<String, dynamic>) {
         _entries = const [];
@@ -355,17 +354,6 @@ class LaunchConfigService {
     return false;
   }
 
-  /// Strips single-line `//` and multi-line `/* */` comments.
-  String _stripComments(String source) {
-    return source.replaceAllMapped(
-      _commentRegex,
-      (match) {
-        final stringLiteral = match.group(1);
-        return stringLiteral ?? '';
-      },
-    );
-  }
-
   /// Expands VS Code variables (e.g. `${workspaceFolder}`, `${env:NAME}`) in [value].
   String _expandVars(String value, String? root, {bool skipDynamic = false}) {
     if (!value.contains(r'$')) return value;
@@ -533,4 +521,57 @@ class LaunchConfigService {
   }
 
   Future<void> dispose() async {}
+}
+
+/// Decodes the JSON-with-comments format accepted by VS Code configuration
+/// files, including trailing commas.
+Object? decodeVscodeLaunchJsonc(String source) {
+  final withoutComments = source.replaceAllMapped(
+    LaunchConfigService._commentRegex,
+    (match) => match.group(1) ?? '',
+  );
+  return jsonDecode(_stripTrailingCommas(withoutComments));
+}
+
+String _stripTrailingCommas(String source) {
+  final buffer = StringBuffer();
+  var inString = false;
+  var escaped = false;
+
+  for (var index = 0; index < source.length; index++) {
+    final character = source[index];
+    if (inString) {
+      buffer.write(character);
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (character == r'\') {
+        escaped = true;
+        continue;
+      }
+      if (character == '"') inString = false;
+      continue;
+    }
+
+    if (character == '"') {
+      inString = true;
+      buffer.write(character);
+      continue;
+    }
+
+    if (character == ',') {
+      var nextIndex = index + 1;
+      while (nextIndex < source.length && source[nextIndex].trim().isEmpty) {
+        nextIndex++;
+      }
+      if (nextIndex < source.length &&
+          (source[nextIndex] == '}' || source[nextIndex] == ']')) {
+        continue;
+      }
+    }
+    buffer.write(character);
+  }
+
+  return buffer.toString();
 }
