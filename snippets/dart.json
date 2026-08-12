@@ -1,0 +1,456 @@
+{
+  "Flutter Stateless Widget": {
+    "prefix": "stless",
+    "description": "Insert a StatelessWidget",
+    "body": [
+      "class $1 extends StatelessWidget {",
+      "  const $1({super.key});",
+      "",
+      "  @override",
+      "  Widget build(BuildContext context) {",
+      "    return ${0:const Placeholder()};",
+      "  }",
+      "}"
+    ]
+  },
+  "Flutter Stateful Widget": {
+    "prefix": "stful",
+    "description": "Insert a StatefulWidget",
+    "body": [
+      "class $1 extends StatefulWidget {",
+      "  const $1({super.key});",
+      "",
+      "  @override",
+      "  State<$1> createState() => _$1State();",
+      "}",
+      "",
+      "class _$1State extends State<$1> {",
+      "  @override",
+      "  Widget build(BuildContext context) {",
+      "    return ${0:const Placeholder()};",
+      "  }",
+      "}"
+    ]
+  },
+  "Flutter Widget with AnimationController": {
+    "prefix": "stanim",
+    "description": "Insert a StatefulWidget with an AnimationController",
+    "body": [
+      "class $1 extends StatefulWidget {",
+      "  const $1({super.key});",
+      "",
+      "  @override",
+      "  State<$1> createState() => _$1State();",
+      "}",
+      "",
+      "class _$1State extends State<$1>",
+      "    with SingleTickerProviderStateMixin {",
+      "  late AnimationController _controller;",
+      "",
+      "  @override",
+      "  void initState() {",
+      "    super.initState();",
+      "    _controller = AnimationController(vsync: this);",
+      "  }",
+      "",
+      "  @override",
+      "  void dispose() {",
+      "    _controller.dispose();",
+      "    super.dispose();",
+      "  }",
+      "",
+      "  @override",
+      "  Widget build(BuildContext context) {",
+      "    return ${0:const Placeholder()};",
+      "  }",
+      "}"
+    ]
+  },
+  "Material App": {
+    "prefix": "matapp",
+    "description": "Create a MaterialApp",
+    "body": [
+      "import 'package:flutter/material.dart';",
+      "",
+      "void main() => runApp(const MyApp());",
+      "",
+      "class MyApp extends StatelessWidget {",
+      "  const MyApp({super.key});",
+      "",
+      "  @override",
+      "  Widget build(BuildContext context) {",
+      "    return MaterialApp(",
+      "      title: 'Material App',",
+      "      home: Scaffold(",
+      "        appBar: AppBar(",
+      "          title: const Text('Material App Bar'),",
+      "        ),",
+      "        body: const Center(",
+      "          child: Text('Hello World'),",
+      "        ),",
+      "      ),",
+      "    );",
+      "  }",
+      "}"
+    ]
+  },
+  "Cupertino App": {
+    "prefix": "cupapp",
+    "description": "Create a CupertinoApp",
+    "body": [
+      "import 'package:flutter/cupertino.dart';",
+      "",
+      "void main() => runApp(const MyApp());",
+      "",
+      "class MyApp extends StatelessWidget {",
+      "  const MyApp({super.key});",
+      "",
+      "  @override",
+      "  Widget build(BuildContext context) {",
+      "    return const CupertinoApp(",
+      "      title: 'Cupertino App',",
+      "      home: CupertinoPageScaffold(",
+      "        navigationBar: CupertinoNavigationBar(",
+      "          middle: Text('Cupertino App Bar'),",
+      "        ),",
+      "        child: Center(",
+      "          child: Text('Hello World'),",
+      "        ),",
+      "      ),",
+      "    );",
+      "  }",
+      "}"
+    ]
+  },
+  "Inherited Widget": {
+    "prefix": "inhw",
+    "description": "Insert an InheritedWidget",
+    "body": [
+      "class ${1:Name} extends InheritedWidget {",
+      "  const ${1:Name}({",
+      "    super.key,",
+      "    required super.child,",
+      "  });",
+      "",
+      "  static ${1:Name}? of(BuildContext context) {",
+      "    return context.dependOnInheritedWidgetOfExactType<${1:Name}>();",
+      "  }",
+      "",
+      "  @override",
+      "  bool updateShouldNotify(${1:Name} oldWidget) {",
+      "    return ${2:true};",
+      "  }",
+      "}"
+    ]
+  },
+  "Build Method": {
+    "prefix": "fbuild",
+    "description": "Insert a build method",
+    "body": [
+      "@override",
+      "Widget build(BuildContext context) {",
+      "  return ${0:};",
+      "}"
+    ]
+  },
+  "InitState": {
+    "prefix": "initS",
+    "description": "Insert initState",
+    "body": [
+      "@override",
+      "void initState() {",
+      "  super.initState();",
+      "  ${0:}",
+      "}"
+    ]
+  },
+  "Dispose": {
+    "prefix": "dis",
+    "description": "Insert dispose",
+    "body": [
+      "@override",
+      "void dispose() {",
+      "  ${0:}",
+      "  super.dispose();",
+      "}"
+    ]
+  },
+  "didUpdateWidget": {
+    "prefix": "didUpdate",
+    "description": "Insert didUpdateWidget",
+    "body": [
+      "@override",
+      "void didUpdateWidget(covariant ${1:MyWidget} ${2:oldWidget}) {",
+      "  super.didUpdateWidget(${2:oldWidget});",
+      "  ${0:}",
+      "}"
+    ]
+  },
+  "didChangeDependencies": {
+    "prefix": "didChange",
+    "description": "Insert didChangeDependencies",
+    "body": [
+      "@override",
+      "void didChangeDependencies() {",
+      "  super.didChangeDependencies();",
+      "  ${0:}",
+      "}"
+    ]
+  },
+  "ListView.Builder": {
+    "prefix": "listb",
+    "description": "Insert ListView.builder",
+    "body": [
+      "ListView.builder(",
+      "  itemCount: ${1:1},",
+      "  itemBuilder: (BuildContext context, int index) {",
+      "    return ${2:};",
+      "  },",
+      "),"
+    ]
+  },
+  "ListView.Separated": {
+    "prefix": "lists",
+    "description": "Insert ListView.separated",
+    "body": [
+      "ListView.separated(",
+      "  itemCount: ${1:1},",
+      "  separatorBuilder: (BuildContext context, int index) {",
+      "    return ${2:};",
+      "  },",
+      "  itemBuilder: (BuildContext context, int index) {",
+      "    return ${3:};",
+      "  },",
+      "),"
+    ]
+  },
+  "GridView.Builder": {
+    "prefix": "gridb",
+    "description": "Insert GridView.builder",
+    "body": [
+      "GridView.builder(",
+      "  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(",
+      "    crossAxisCount: ${1:2},",
+      "  ),",
+      "  itemCount: ${2:2},",
+      "  itemBuilder: (BuildContext context, int index) {",
+      "    return ${3:};",
+      "  },",
+      "),"
+    ]
+  },
+  "GridView.Count": {
+    "prefix": "gridc",
+    "description": "Insert GridView.count",
+    "body": [
+      "GridView.count(",
+      "  crossAxisSpacing: ${1:1},",
+      "  mainAxisSpacing: ${2:2},",
+      "  crossAxisCount: ${3:2},",
+      "  children: [",
+      "    ${4:}",
+      "  ],",
+      "),"
+    ]
+  },
+  "GridView.Extent": {
+    "prefix": "gride",
+    "description": "Insert GridView.extent",
+    "body": [
+      "GridView.extent(",
+      "  maxCrossAxisExtent: ${1:2},",
+      "  children: [",
+      "    ${2:}",
+      "  ],",
+      "),"
+    ]
+  },
+  "Custom Scroll View": {
+    "prefix": "csv",
+    "description": "Insert CustomScrollView",
+    "body": [
+      "CustomScrollView(",
+      "  slivers: [",
+      "    ${0:}",
+      "  ],",
+      "),"
+    ]
+  },
+  "Single Child ScrollView": {
+    "prefix": "scsv",
+    "description": "Insert SingleChildScrollView",
+    "body": [
+      "SingleChildScrollView(",
+      "  child: Column(",
+      "    children: [",
+      "      ${0:}",
+      "    ],",
+      "  ),",
+      "),"
+    ]
+  },
+  "Stream Builder": {
+    "prefix": "streamb",
+    "description": "Insert StreamBuilder",
+    "body": [
+      "StreamBuilder(",
+      "  stream: ${1:stream},",
+      "  builder: (BuildContext context, AsyncSnapshot snapshot) {",
+      "    return ${0:Container()};",
+      "  },",
+      "),"
+    ]
+  },
+  "Future Builder": {
+    "prefix": "futureb",
+    "description": "Insert FutureBuilder",
+    "body": [
+      "FutureBuilder(",
+      "  future: ${1:future},",
+      "  builder: (BuildContext context, AsyncSnapshot snapshot) {",
+      "    return ${0:};",
+      "  },",
+      "),"
+    ]
+  },
+  "Animated Builder": {
+    "prefix": "animb",
+    "description": "Insert AnimatedBuilder",
+    "body": [
+      "AnimatedBuilder(",
+      "  animation: ${1:animation},",
+      "  builder: (BuildContext context, Widget? child) {",
+      "    return ${0:};",
+      "  },",
+      "),"
+    ]
+  },
+  "Stateful Builder": {
+    "prefix": "sbuilder",
+    "description": "Insert StatefulBuilder",
+    "body": [
+      "StatefulBuilder(",
+      "  builder: (BuildContext context, setState) {",
+      "    return ${0:};",
+      "  },",
+      "),"
+    ]
+  },
+  "Layout Builder": {
+    "prefix": "layoutb",
+    "description": "Insert LayoutBuilder",
+    "body": [
+      "LayoutBuilder(",
+      "  builder: (BuildContext context, BoxConstraints constraints) {",
+      "    return ${0:};",
+      "  },",
+      "),"
+    ]
+  },
+  "Orientation Builder": {
+    "prefix": "orib",
+    "description": "Insert OrientationBuilder",
+    "body": [
+      "OrientationBuilder(",
+      "  builder: (BuildContext context, Orientation orientation) {",
+      "    return ${0:Container()};",
+      "  },",
+      "),"
+    ]
+  },
+  "Value Listenable Builder": {
+    "prefix": "vlb",
+    "description": "Insert ValueListenableBuilder",
+    "body": [
+      "ValueListenableBuilder(",
+      "  valueListenable: ${1:valueListenable},",
+      "  builder: (BuildContext context, ${2:dynamic} value, Widget? child) {",
+      "    return ${0:Container()};",
+      "  },",
+      "),"
+    ]
+  },
+  "Tween Animation Builder": {
+    "prefix": "tweenb",
+    "description": "Insert TweenAnimationBuilder",
+    "body": [
+      "TweenAnimationBuilder(",
+      "  duration: ${1:const Duration()},",
+      "  tween: ${2:Tween()},",
+      "  builder: (BuildContext context, ${3:dynamic} value, Widget? child) {",
+      "    return ${0:Container()};",
+      "  },",
+      "),"
+    ]
+  },
+  "Custom Painter": {
+    "prefix": "painter",
+    "description": "Insert a CustomPainter",
+    "body": [
+      "class ${1:name}Painter extends CustomPainter {",
+      "  @override",
+      "  void paint(Canvas canvas, Size size) {",
+      "    ${0:}",
+      "  }",
+      "",
+      "  @override",
+      "  bool shouldRepaint(${1:name}Painter oldDelegate) => false;",
+      "}"
+    ]
+  },
+  "Custom Clipper": {
+    "prefix": "clipper",
+    "description": "Insert a CustomClipper",
+    "body": [
+      "class ${1:name}Clipper extends CustomClipper<Path> {",
+      "  @override",
+      "  Path getClip(Size size) {",
+      "    ${0:}",
+      "  }",
+      "",
+      "  @override",
+      "  bool shouldReclip(${1:name}Clipper oldClipper) => false;",
+      "}"
+    ]
+  },
+  "Material Package": {
+    "prefix": "impm",
+    "description": "Import flutter/material.dart",
+    "body": [
+      "import 'package:flutter/material.dart';"
+    ]
+  },
+  "Cupertino Package": {
+    "prefix": "impc",
+    "description": "Import flutter/cupertino.dart",
+    "body": [
+      "import 'package:flutter/cupertino.dart';"
+    ]
+  },
+  "flutter_test Package": {
+    "prefix": "impt",
+    "description": "Import flutter_test",
+    "body": [
+      "import 'package:flutter_test/flutter_test.dart';"
+    ]
+  },
+  "Test Widgets": {
+    "prefix": "ftw",
+    "description": "Insert testWidgets",
+    "body": [
+      "testWidgets(",
+      "  '${1:description}',",
+      "  (WidgetTester tester) async {",
+      "    ${0:}",
+      "  },",
+      ");"
+    ]
+  },
+  "debugPrint": {
+    "prefix": "dprint",
+    "description": "Insert debugPrint",
+    "body": [
+      "debugPrint(${1:statement});"
+    ]
+  }
+}

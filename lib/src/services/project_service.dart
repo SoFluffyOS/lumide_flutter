@@ -253,4 +253,25 @@ class ProjectService {
     _targetsLoaded = true;
     return _cachedTargets;
   }
+
+  /// Whether [projectRoot] is a Flutter project (`sdk: flutter` in pubspec).
+  Future<bool> isFlutterProject(String projectRoot) async {
+    final pubspecPath = path.join(projectRoot, 'pubspec.yaml');
+    if (!await context.fs.exists(pubspecPath)) return false;
+
+    try {
+      final content = await context.fs.readString(pubspecPath);
+      return pubspecReferencesFlutter(content);
+    } catch (_) {
+      return false;
+    }
+  }
+}
+
+/// Pure helper for tests and callers that already have pubspec text.
+bool pubspecReferencesFlutter(String content) {
+  return RegExp(
+    r'''^\s*sdk:\s*['"]?flutter['"]?\s*$''',
+    multiLine: true,
+  ).hasMatch(content);
 }

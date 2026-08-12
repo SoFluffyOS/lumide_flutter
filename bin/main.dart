@@ -17,6 +17,7 @@ class FlutterPlugin extends LumidePlugin {
   late LaunchConfigService launchConfigService;
   late TargetService targetService;
   late RunService runService;
+  late ImportAssistService importAssistService;
 
   @override
   Future<void> onActivate(LumideContext context) async {
@@ -33,6 +34,11 @@ class FlutterPlugin extends LumidePlugin {
     targetService = TargetService(context, projectService, launchConfigService);
     runService = RunService(context, projectService, sdkManager, deviceService,
         targetService, daemonService, launchConfigService);
+    importAssistService = ImportAssistService(
+      context,
+      projectService,
+      logService,
+    );
     deviceService.onDidChange = runService.refreshLaunchConfigurations;
     targetService.onDidChange = runService.refreshLaunchConfigurations;
 
@@ -48,6 +54,7 @@ class FlutterPlugin extends LumidePlugin {
       deviceService.init(),
       launchConfigService.init(),
       targetService.init(),
+      importAssistService.init(),
     ]);
     launchConfigService.onDidChange = runService.refreshLaunchConfigurations;
 
@@ -220,6 +227,12 @@ class FlutterPlugin extends LumidePlugin {
         title: 'Flutter: New Dart File',
         callback: ([args]) => flutterService.newDartFileForContext(args),
       ),
+      context.commands.registerCommand(
+        id: cmdFlutterEnsureImports,
+        title: 'Flutter: Ensure Imports',
+        callback: ([args]) =>
+            importAssistService.ensureImportsForActiveDocument(),
+      ),
     ]);
   }
 
@@ -280,6 +293,7 @@ class FlutterPlugin extends LumidePlugin {
 
   @override
   Future<void> onDeactivate() async {
+    await importAssistService.dispose();
     await daemonService.dispose();
     await runService.dispose();
     await deviceService.dispose();

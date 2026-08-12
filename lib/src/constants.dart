@@ -23,6 +23,7 @@ const String cmdFlutterCleanForContext = 'flutter.context.clean';
 const String cmdFlutterSetTargetForContext = 'flutter.context.setTarget';
 const String cmdFlutterCreateForContext = 'flutter.context.create';
 const String cmdFlutterNewDartFileForContext = 'flutter.context.newDartFile';
+const String cmdFlutterEnsureImports = 'flutter.ensureImports';
 const String menuFlutterDevToolsAddPane = 'devtools_add_pane';
 const String launchProviderFlutter = 'flutter';
 const String launchConfigCurrent = 'current';
@@ -34,6 +35,8 @@ const String confHotReloadOnSave = 'flutter.hotReloadOnSave';
 const String confClearLogOnHotRestart = 'flutter.clearLogOnHotRestart';
 const String confMaxPendingLogs = 'flutter.maxPendingLogs';
 const String confPressureThreshold = 'flutter.pressureThreshold';
+const String confAutoImportOnSave = 'flutter.autoImportOnSave';
+const String confRemoveUnusedImportsOnSave = 'flutter.removeUnusedImportsOnSave';
 
 // defaults
 const int defaultLogEntryLimit = 5000;
@@ -41,6 +44,8 @@ const bool defaultHotReloadOnSave = true;
 const bool defaultClearLogOnHotRestart = true;
 const int defaultMaxPendingLogs = 50;
 const int defaultPressureThreshold = 10;
+const bool defaultAutoImportOnSave = true;
+const bool defaultRemoveUnusedImportsOnSave = true;
 
 // output channels
 const String channelFlutter = 'Flutter';
