@@ -9,6 +9,10 @@
 - Add heuristic Flutter import assist: sync material/cupertino/widgets and related imports on save, plus **Flutter: Ensure Imports**.
 - Settings `flutter.autoImportOnSave` and `flutter.removeUnusedImportsOnSave` (both default true).
 
+### ♻️ Refactors
+
+- Use shared [`lumide_import_assist`](https://pub.dev/packages/lumide_import_assist) (`FlutterImportPack`) for import sync.
+
 ### ⬆️ Upgrade lumide_api
 
 - Bump `lumide_api` dependency to `^1.9.0` for snippet contributions.
