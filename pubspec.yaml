@@ -12,10 +12,11 @@ executables:
   lumide_flutter: main
 
 environment:
-  sdk: '>=3.0.0 <4.0.0'
+  sdk: '>=3.12.1 <4.0.0'
 
 dependencies:
   lumide_api: ^1.9.0
+  lumide_import_assist: ^0.1.1
   vm_service: 15.0.2
   web_socket_channel: 3.0.3
   path: 1.9.1

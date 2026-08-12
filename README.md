@@ -35,7 +35,7 @@ The official Flutter extension for [Lumide IDE](https://lumide.dev).
 - **Toolbar**: Context-aware controls (Run, Stop, Reload, Restart) appear when a Flutter project is active.
 - **Debug Navigation**: When a breakpoint is hit, Lumide jumps to the stopped source location and lets you navigate by stack frame or breakpoint entry.
 - **Dart snippets**: Short Flutter prefixes in `.dart` files (`stless`, `listb`, `streamb`, …).
-- **Import assist**: Heuristically adds/removes managed Flutter imports on save (or via **Flutter: Ensure Imports**). Text snippets do not go through Dart completion, so they do not trigger LSP auto-import — save the file or run the command after inserting a snippet.
+- **Import assist**: Heuristically adds/removes managed Flutter imports on save (or via **Flutter: Ensure Imports**), powered by [`lumide_import_assist`](https://pub.dev/packages/lumide_import_assist). Text snippets do not go through Dart completion, so they do not trigger LSP auto-import — save the file or run the command after inserting a snippet.
 
 ### Snippets
 
