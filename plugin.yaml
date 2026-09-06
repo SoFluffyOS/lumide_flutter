@@ -4,9 +4,12 @@ description: 'Flutter support for Lumide IDE'
 entry_point: 'bin/main.dart'
 
 activation_events:
+  - 'onSdkProvider:flutter'
   - 'workspaceContains:pubspec.yaml'
 
 permissions:
+  - network:
+      - 'storage.googleapis.com'
   - fileSystem:
       - '${workspace}/**'
   - shell:
@@ -45,6 +48,17 @@ configuration:
     title: 'Log Pressure Threshold'
     description: 'When pending log count exceeds this, skip expensive VM lookups for faster processing.'
 contributes:
+  sdkProviders:
+    - id: flutter
+      kind: flutter
+      title: 'Flutter'
+      iconPath: 'assets/icon_flutter_solid.svg'
+      capabilities:
+        catalog: true
+        discovery: true
+        resolution: true
+        validation: true
+        install: true
   commands:
     - id: flutter.doctor
       title: 'Flutter: Doctor'

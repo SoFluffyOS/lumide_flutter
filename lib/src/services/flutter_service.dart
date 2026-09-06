@@ -17,9 +17,7 @@ class FlutterService {
   Future<bool> checkSdk() async {
     try {
       final root = await projectService.getProjectRoot();
-      final cmd = await sdkManager.getFlutterCommand(root);
-      final result =
-          await context.shell.run(cmd.first, [...cmd.sublist(1), '--version']);
+      final result = await sdkManager.runFlutter(root, const ['--version']);
       return result.exitCode == 0;
     } catch (_) {
       return false;
@@ -382,9 +380,8 @@ class FlutterService {
 
   Future<ProcessResult> run(List<String> args) async {
     final root = await projectService.getProjectRoot();
-    final cmd = await sdkManager.getFlutterCommand(root);
 
-    return await _runWithCwd(cmd, args, root);
+    return await _runWithCwd(args, root);
   }
 
   Future<void> _runCommandInProject(List<String> args, String statusMsg) async {
@@ -426,7 +423,7 @@ class FlutterService {
     );
 
     try {
-      final result = await _runWithCwd(cmdParts, args, workingDir);
+      final result = await _runWithCwd(args, workingDir);
 
       final stdout = result.stdout.toString().trim();
       final stderr = result.stderr.toString().trim();
@@ -453,12 +450,15 @@ class FlutterService {
   }
 
   Future<ProcessResult> _runWithCwd(
-      List<String> cmdParts, List<String> args, String? workingDir) async {
-    final fullArgs = [...cmdParts.sublist(1), ...args];
-    final executable = cmdParts.first;
-
-    return await context.shell
-        .run(executable, fullArgs, workingDirectory: workingDir);
+    List<String> args,
+    String? workingDir,
+  ) async {
+    final projectRoot = workingDir ?? await projectService.getProjectRoot();
+    return sdkManager.runFlutter(
+      projectRoot,
+      args,
+      workingDirectory: workingDir,
+    );
   }
 
   late final RunService runService;
@@ -636,8 +636,6 @@ class FlutterService {
 
     for (final project in validProjects) {
       try {
-        final cmd = await sdkManager.getFlutterCommand(project);
-
         String displayPath;
         if (workspaceRootUri != null &&
             path.isWithin(workspaceRootUri, project)) {
@@ -649,7 +647,7 @@ class FlutterService {
         await output?.append('--- [ $displayPath ] ---\n');
         await output?.append('Working Directory: $project\n');
 
-        final result = await _runWithCwd(cmd, ['pub', 'get'], project);
+        final result = await _runWithCwd(['pub', 'get'], project);
 
         final stdout = result.stdout.toString().trim();
         final stderr = result.stderr.toString().trim();

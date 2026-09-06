@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:lumide_api/lumide_api.dart';
 import 'package:lumide_flutter/lumide_flutter.dart';
 import 'package:lumide_flutter/src/constants.dart';
+import 'package:path/path.dart' as path;
 
 void main() => FlutterPlugin().run();
 
@@ -13,10 +14,15 @@ class FlutterPlugin extends LumidePlugin {
   late StatusBarService statusBarService;
   late ProjectService projectService;
   late SdkManager sdkManager;
+  late FlutterSdkProvider flutterSdkProvider;
   late DaemonService daemonService;
   late LaunchConfigService launchConfigService;
   late TargetService targetService;
   late RunService runService;
+  LumideSdkSelectionChangeEvent? _pendingSdkSelectionChange;
+  Future<void>? _sdkSelectionWorker;
+  bool _deactivating = false;
+  bool _workspaceServicesInitialized = false;
 
   @override
   Future<void> onActivate(LumideContext context) async {
@@ -25,6 +31,29 @@ class FlutterPlugin extends LumidePlugin {
     statusBarService = StatusBarService(context);
     projectService = ProjectService(context);
     sdkManager = SdkManager(context);
+    flutterSdkProvider = FlutterSdkProvider(context);
+    try {
+      await flutterSdkProvider.register();
+      logService.info('Flutter SDK provider registered.');
+    } catch (error) {
+      logService.warn(
+        'Host SDK management is unavailable; using PATH/FVM/Puro fallback: '
+        '$error',
+      );
+    }
+    context.sdks.onDidChangeSelection((event) {
+      _scheduleSdkSelectionRefresh(context, event);
+    });
+
+    // SDK discovery, catalog browsing, installation, and global selection do
+    // not require a workspace. Keep provider-only activation lightweight; the
+    // host restarts conditionally activated plugins when a workspace opens.
+    final workspaceRoot = await context.workspace.getRootUri();
+    if (workspaceRoot == null || workspaceRoot.isEmpty) {
+      logService.info('Flutter SDK provider ready without a workspace.');
+      return;
+    }
+
     daemonService =
         DaemonService(context, projectService, sdkManager, logService);
     flutterService = FlutterService(context, projectService, sdkManager);
@@ -38,9 +67,9 @@ class FlutterPlugin extends LumidePlugin {
 
     // Inject RunService into FlutterService (break circular dependency)
     flutterService.setRunService(runService);
+    _workspaceServicesInitialized = true;
 
     // 2. Setup UI & Listeners
-    unawaited(daemonService.start());
     await runService
         .init(); // Register provider first so updateConfigurations notifications work
     await Future.wait([
@@ -55,7 +84,7 @@ class FlutterPlugin extends LumidePlugin {
     unawaited(flutterService.checkSdk().then((hasSdk) async {
       if (!hasSdk) {
         await context.window.showMessage(
-            'Flutter SDK not found. Make sure "flutter" is in your PATH.',
+            'Flutter SDK not found. Configure one in Settings > SDKs.',
             type: MessageType.error);
         await statusBarService.updateVersion('Not Found');
       }
@@ -102,10 +131,78 @@ class FlutterPlugin extends LumidePlugin {
       }
     });
 
-    // 6. Initial Data Fetch
-    unawaited(deviceService.refreshDevices());
-
     await context.window.showMessage('Flutter plugin ready');
+  }
+
+  void _scheduleSdkSelectionRefresh(
+    LumideContext context,
+    LumideSdkSelectionChangeEvent event,
+  ) {
+    if (_deactivating || event.kind != LumideSdkKind.flutter) return;
+    _pendingSdkSelectionChange = event;
+    if (_sdkSelectionWorker != null) return;
+
+    final worker = _drainSdkSelectionChanges(context);
+    _sdkSelectionWorker = worker;
+    unawaited(worker.whenComplete(() {
+      if (identical(_sdkSelectionWorker, worker)) {
+        _sdkSelectionWorker = null;
+      }
+      final pending = _pendingSdkSelectionChange;
+      if (!_deactivating && pending != null) {
+        _scheduleSdkSelectionRefresh(context, pending);
+      }
+    }));
+  }
+
+  Future<void> _drainSdkSelectionChanges(LumideContext context) async {
+    while (!_deactivating) {
+      final event = _pendingSdkSelectionChange;
+      if (event == null) return;
+      _pendingSdkSelectionChange = null;
+      await _applySdkSelectionChange(context, event);
+    }
+  }
+
+  Future<void> _applySdkSelectionChange(
+    LumideContext context,
+    LumideSdkSelectionChangeEvent event,
+  ) async {
+    try {
+      final workspaceRoot = await context.workspace.getRootUri();
+      if (workspaceRoot == null || workspaceRoot.isEmpty) {
+        logService.info('Flutter SDK default updated.');
+        return;
+      }
+      final changedWorkspace = event.workspacePath;
+      if (changedWorkspace != null &&
+          !path.equals(
+            path.normalize(changedWorkspace),
+            path.normalize(workspaceRoot),
+          )) {
+        return;
+      }
+
+      if (runService.isRunning) {
+        logService.info(
+          'Flutter SDK selection changed. The current app keeps its existing '
+          'SDK; the new selection applies to the next launch.',
+        );
+      }
+      sdkManager.clearCache();
+      final daemonWasRunning = daemonService.isRunning;
+      if (daemonWasRunning) await daemonService.restart();
+      await flutterService.checkSdk();
+      if (daemonWasRunning) await deviceService.refreshDevices();
+      await runService.refreshLaunchConfigurations();
+      logService.info('Flutter services refreshed for the selected SDK.');
+    } catch (error, stackTrace) {
+      logService.error(
+        'Failed to refresh Flutter services after the SDK changed',
+        error,
+        stackTrace,
+      );
+    }
   }
 
   Future<void> _registerCommands(LumideContext context) async {
@@ -280,12 +377,28 @@ class FlutterPlugin extends LumidePlugin {
 
   @override
   Future<void> onDeactivate() async {
-    await daemonService.dispose();
-    await runService.dispose();
-    await deviceService.dispose();
-    await targetService.dispose();
-    await launchConfigService.dispose();
-    await statusBarService.dispose();
-    await flutterService.dispose();
+    _deactivating = true;
+    _pendingSdkSelectionChange = null;
+    await _sdkSelectionWorker;
+    if (!_workspaceServicesInitialized) return;
+    await _disposeSafely('run service', runService.dispose);
+    await _disposeSafely('device service', deviceService.dispose);
+    await _disposeSafely('target service', targetService.dispose);
+    await _disposeSafely(
+        'launch configuration service', launchConfigService.dispose);
+    await _disposeSafely('status bar service', statusBarService.dispose);
+    await _disposeSafely('Flutter daemon', daemonService.dispose);
+    await _disposeSafely('Flutter service', flutterService.dispose);
+  }
+
+  Future<void> _disposeSafely(
+    String name,
+    Future<void> Function() dispose,
+  ) async {
+    try {
+      await dispose();
+    } catch (error, stackTrace) {
+      logService.error('Failed to dispose $name', error, stackTrace);
+    }
   }
 }
