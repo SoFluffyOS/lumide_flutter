@@ -1,3 +1,15 @@
+## 1.12.0 (2026-09-07)
+
+> This release requires a Lumide 0.21.0 and later. Do not update if you are using an older version.
+
+### 🚀 New Features
+
+- Contribute official Flutter release catalog to Lumide's SDK management. You can now install Flutter SDK directly from the SDK Manager UI.
+
+### ⬆️ Upgrade lumide_api
+
+- Bump `lumide_api` dependency to ^1.10.0` to support Lumide's built-in SDK management UI.
+
 ## 1.11.0 (2026-07-11)
 
 > This release requires a Lumide 0.15.0 and later. Do not update if you are using an older version.
