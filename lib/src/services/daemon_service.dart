@@ -27,7 +27,7 @@ class DaemonService {
   final _daemonConnectedController =
       StreamController<Map<String, dynamic>>.broadcast();
 
-  final Completer<void> _readyCompleter = Completer<void>();
+  Completer<void> _readyCompleter = Completer<void>();
   Future<void> get ready => _readyCompleter.future;
 
   Stream<Map<String, dynamic>> get onDeviceAdded =>
@@ -37,64 +37,97 @@ class DaemonService {
   Stream<Map<String, dynamic>> get onDaemonConnected =>
       _daemonConnectedController.stream;
 
-  bool _isStarting = false;
+  Future<void>? _startInFlight;
+  Timer? _startupTimer;
+  bool _disposed = false;
   bool get isRunning => _process != null;
 
   DaemonService(
       this.context, this.projectService, this.sdkManager, this.logService);
 
-  Future<void> start() async {
-    if (_process != null || _isStarting) return;
-    _isStarting = true;
+  Future<void> start() {
+    if (_disposed) {
+      return Future.error(StateError('Daemon service is disposed'));
+    }
+    if (_process != null) return _waitUntilReady(_readyCompleter);
+    final existing = _startInFlight;
+    if (existing != null) return existing;
+
+    late final Future<void> startFuture;
+    startFuture = _start().whenComplete(() {
+      if (identical(_startInFlight, startFuture)) {
+        _startInFlight = null;
+      }
+    });
+    _startInFlight = startFuture;
+    return startFuture;
+  }
+
+  Future<void> _start() async {
+    if (_readyCompleter.isCompleted) {
+      _readyCompleter = Completer<void>();
+    }
+    final readyCompleter = _readyCompleter;
 
     try {
       final root = await projectService.getProjectRoot();
       final flutterCmd = await sdkManager.getFlutterCommand(root);
       final executable = flutterCmd.first;
       final args = [...flutterCmd.sublist(1), 'daemon'];
-
-      _process = await Process.start(
+      final process = await Process.start(
         executable,
         args,
         workingDirectory: root,
       );
+      if (_disposed) {
+        process.kill();
+        return;
+      }
+      _process = process;
 
-      final proc = _process!;
-
-      _stdoutSub = proc.stdout
+      _stdoutSub = process.stdout
           .transform(utf8.decoder)
           .transform(const LineSplitter())
           .listen(_handleStdoutLine);
-
-      _stderrSub = proc.stderr.transform(utf8.decoder).listen((data) {
+      _stderrSub = process.stderr.transform(utf8.decoder).listen((data) {
         logService.warn('Daemon stderr: $data');
       });
 
-      // Timeout for ready state to avoid hanging if daemon fails silently
-      Future.delayed(const Duration(seconds: 15), () {
-        if (!_readyCompleter.isCompleted) {
-          _readyCompleter.completeError(
-              Exception('Daemon failed to start within 15 seconds'));
+      _startupTimer?.cancel();
+      _startupTimer = Timer(const Duration(seconds: 15), () {
+        if (identical(_process, process) && !readyCompleter.isCompleted) {
+          _completeReadyError(
+            readyCompleter,
+            Exception('Daemon failed to start within 15 seconds'),
+          );
         }
       });
 
-      unawaited(proc.exitCode.then((code) {
+      unawaited(process.exitCode.then((code) {
+        if (!identical(_process, process)) return;
         _process = null;
+        _startupTimer?.cancel();
+        _startupTimer = null;
         _failPendingRequests('Daemon process exited with code $code');
       }));
-    } catch (e) {
-      logService.error('Failed to start flutter daemon', e);
-      if (!_readyCompleter.isCompleted) {
-        _readyCompleter.completeError(e);
-      }
-    } finally {
-      _isStarting = false;
-    }
 
+      await readyCompleter.future;
+    } catch (error, stackTrace) {
+      logService.error('Flutter daemon failed to become ready', error);
+      if (!readyCompleter.isCompleted) {
+        _completeReadyError(readyCompleter, error, stackTrace);
+      }
+      if (_process != null) {
+        await _stopProcess('Flutter daemon failed to start');
+      }
+    }
+  }
+
+  Future<void> _waitUntilReady(Completer<void> completer) async {
     try {
-      await ready;
-    } catch (e) {
-      logService.error('Flutter daemon failed to become ready', e);
+      await completer.future;
+    } catch (error) {
+      logService.error('Flutter daemon failed to become ready', error);
     }
   }
 
@@ -146,13 +179,19 @@ class DaemonService {
           if (!_readyCompleter.isCompleted) {
             _readyCompleter.complete();
           }
-          _daemonConnectedController.add(params);
+          if (!_daemonConnectedController.isClosed) {
+            _daemonConnectedController.add(params);
+          }
           break;
         case 'device.added':
-          _deviceAddedController.add(params);
+          if (!_deviceAddedController.isClosed) {
+            _deviceAddedController.add(params);
+          }
           break;
         case 'device.removed':
-          _deviceRemovedController.add(params);
+          if (!_deviceRemovedController.isClosed) {
+            _deviceRemovedController.add(params);
+          }
           break;
         case 'daemon.logMessage':
           // Optional: handle log messages
@@ -169,10 +208,14 @@ class DaemonService {
 
   Future<dynamic> _sendRequest(String method,
       [Map<String, dynamic>? params]) async {
-    await ready;
-
-    if (_process == null) {
-      return Future.error(Exception('Flutter daemon is not running'));
+    if (_process == null) await start();
+    final process = _process;
+    if (process == null) {
+      throw Exception('Flutter daemon is not running');
+    }
+    await _readyCompleter.future;
+    if (!identical(_process, process)) {
+      throw Exception('Flutter daemon changed while sending a request');
     }
 
     final id = ++_requestId;
@@ -188,19 +231,79 @@ class DaemonService {
     }
 
     final payload = [request];
-    _process!.stdin.writeln(jsonEncode(payload));
+    process.stdin.writeln(jsonEncode(payload));
 
     return completer.future;
   }
 
   void _failPendingRequests(String error) {
     if (!_readyCompleter.isCompleted) {
-      _readyCompleter.completeError(Exception(error));
+      _completeReadyError(_readyCompleter, Exception(error));
     }
     for (final completer in _pendingRequests.values) {
       completer.completeError(Exception(error));
     }
     _pendingRequests.clear();
+  }
+
+  void _completeReadyError(
+    Completer<void> completer,
+    Object error, [
+    StackTrace? stackTrace,
+  ]) {
+    if (completer.isCompleted) return;
+    final future = completer.future;
+    completer.completeError(error, stackTrace ?? StackTrace.current);
+    unawaited(future.catchError((Object _, StackTrace __) {}));
+  }
+
+  Future<void> restart() async {
+    if (_disposed) return;
+    final starting = _startInFlight;
+    if (starting != null) await starting;
+    await _stopProcess('Flutter daemon is restarting');
+    if (_disposed) return;
+    _readyCompleter = Completer<void>();
+    await start();
+  }
+
+  Future<void> _stopProcess(String reason) async {
+    final process = _process;
+    _process = null;
+    _startupTimer?.cancel();
+    _startupTimer = null;
+
+    if (process != null) {
+      try {
+        final id = ++_requestId;
+        final completer = Completer<dynamic>();
+        _pendingRequests[id] = completer;
+        process.stdin.writeln(
+          jsonEncode([
+            {'id': id, 'method': 'daemon.shutdown'},
+          ]),
+        );
+        await completer.future.timeout(const Duration(seconds: 1));
+      } catch (_) {
+        // Continue with process termination below.
+      }
+      try {
+        await process.exitCode.timeout(const Duration(seconds: 2));
+      } catch (_) {
+        process.kill(ProcessSignal.sigkill);
+        try {
+          await process.exitCode.timeout(const Duration(seconds: 1));
+        } catch (_) {
+          // The OS owns the remaining cleanup if it cannot be joined.
+        }
+      }
+    }
+
+    await _stdoutSub?.cancel();
+    await _stderrSub?.cancel();
+    _stdoutSub = null;
+    _stderrSub = null;
+    _failPendingRequests(reason);
   }
 
   // --- Daemon API ---
@@ -230,19 +333,9 @@ class DaemonService {
   }
 
   Future<void> dispose() async {
-    _failPendingRequests('Daemon service is disposing');
-    if (_process != null) {
-      try {
-        await _sendRequest('daemon.shutdown');
-        // Give the daemon a few seconds to shut down gracefully
-        await _process?.exitCode.timeout(const Duration(seconds: 3));
-      } catch (_) {
-        _process?.kill(ProcessSignal.sigkill);
-      }
-      _process = null;
-    }
-    await _stdoutSub?.cancel();
-    await _stderrSub?.cancel();
+    if (_disposed) return;
+    _disposed = true;
+    await _stopProcess('Daemon service is disposing');
     await _deviceAddedController.close();
     await _deviceRemovedController.close();
     await _daemonConnectedController.close();

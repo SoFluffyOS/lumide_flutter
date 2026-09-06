@@ -6,6 +6,7 @@ export 'launch_source_resolver.dart';
 export 'log_service.dart';
 export 'project_service.dart';
 export 'run_service.dart';
+export 'sdk/sdk.dart';
 export 'sdk_manager.dart';
 export 'status_bar_service.dart';
 export 'target_service.dart';

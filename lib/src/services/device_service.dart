@@ -13,7 +13,7 @@ class DeviceService {
 
   List<Map<String, dynamic>> _devices = [];
   String? _selectedDeviceId;
-  bool _isLoading = true;
+  bool _isLoading = false;
   bool _isInitialized = false;
   Future<void> Function()? onDidChange;
 
@@ -47,12 +47,6 @@ class DeviceService {
         context.window.showMessage('Device disconnected: ${device['name']}');
       }
     });
-
-    try {
-      await daemonService.enableDevicePolling();
-    } catch (e) {
-      io.stderr.writeln('Failed to enable device polling: $e');
-    }
   }
 
   Future<void> refreshDevices() async {
@@ -60,6 +54,7 @@ class DeviceService {
     await _notifyChanged();
 
     try {
+      await daemonService.enableDevicePolling();
       final devices =
           List<Map<String, dynamic>>.from(await daemonService.getDevices())
             ..sort((a, b) => _deviceSortRank(a).compareTo(_deviceSortRank(b)));
@@ -86,6 +81,7 @@ class DeviceService {
   }
 
   Future<void> selectDevice([Map<String, int>? position]) async {
+    if (!_isInitialized) await refreshDevices();
     final devices = List<Map<String, dynamic>>.from(_devices)
       ..sort((a, b) => _deviceSortRank(a).compareTo(_deviceSortRank(b)));
 
@@ -327,6 +323,8 @@ class DeviceService {
       return 'Scanning...';
     }
 
+    if (!_isInitialized) return 'Select Device';
+
     if (_selectedDeviceId != null) {
       final device = _devices.firstWhere((d) => d['id'] == _selectedDeviceId,
           orElse: () => {});
@@ -342,6 +340,8 @@ class DeviceService {
     if (_isLoading) {
       return 'Scanning for devices...';
     }
+
+    if (!_isInitialized) return 'Select to scan for Flutter devices';
 
     if (_selectedDeviceId != null) {
       final device = _devices.firstWhere((d) => d['id'] == _selectedDeviceId,

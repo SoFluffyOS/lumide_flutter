@@ -32,6 +32,8 @@ The official Flutter extension for [Lumide IDE](https://lumide.dev).
 
 ### 🛠 Editor Integration
 - **Status Bar**: Shows the active Flutter SDK version. Click to access the *Flutter Tools* menu.
+- **SDK Manager**: Browse official stable and beta releases, install verified SDK archives, validate installations, and choose user or workspace defaults from Lumide Settings.
+- **Existing SDKs**: Detects Flutter on `PATH` plus workspace selections from FVM and Puro without taking ownership of those installations.
 - **Toolbar**: Context-aware controls (Run, Stop, Reload, Restart) appear when a Flutter project is active.
 - **Debug Navigation**: When a breakpoint is hit, Lumide jumps to the stopped source location and lets you navigate by stack frame or breakpoint entry.
 
@@ -63,9 +65,15 @@ Customize behavior in your `.lumide/settings.json` or Workspace Settings:
 | `flutter.clearLogOnHotRestart` | `true` | Clear the output channel when restarting |
 | `flutter.logEntryLimit` | `5000` | Max lines in the Flutter output channel |
 
-## Requirements
+## Flutter SDK selection
 
-- **Flutter SDK**: Must be installed and available in your system `PATH`.
+Open **SDKs: Manage SDKs** from the Command Palette to install or select a
+Flutter SDK. A Flutter SDK on `PATH`, an FVM workspace, or a Puro workspace also
+works. For Flutter projects, Lumide automatically uses the Dart SDK bundled in
+the selected Flutter installation.
+
+The plugin retains PATH/FVM/Puro discovery when running against an older Lumide
+host that does not expose SDK management.
 
 ## License
 
