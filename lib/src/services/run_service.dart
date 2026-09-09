@@ -138,20 +138,31 @@ class RunService {
     this.launchConfigService,
   );
 
+  Future<int> _readIntConfiguration(String key, int fallback) async {
+    final value = await context.workspace.getConfiguration(key);
+    return switch (value) {
+      final num value => value.toInt(),
+      _ => fallback,
+    };
+  }
+
   Future<void> init() async {
-    final logLimit =
-        await context.workspace.getConfiguration(confLogEntryLimit) as int? ??
-            defaultLogEntryLimit;
+    final logLimit = await _readIntConfiguration(
+      confLogEntryLimit,
+      defaultLogEntryLimit,
+    );
 
     _channel = await context.window
         .createOutputChannel(channelFlutter, maxEntries: logLimit);
 
-    _maxPendingLogs =
-        await context.workspace.getConfiguration(confMaxPendingLogs) as int? ??
-            defaultMaxPendingLogs;
-    _pressureThreshold = await context.workspace
-            .getConfiguration(confPressureThreshold) as int? ??
-        defaultPressureThreshold;
+    _maxPendingLogs = await _readIntConfiguration(
+      confMaxPendingLogs,
+      defaultMaxPendingLogs,
+    );
+    _pressureThreshold = await _readIntConfiguration(
+      confPressureThreshold,
+      defaultPressureThreshold,
+    );
 
     context.debug.onLaunch(debug);
     context.debug.onContinue(_handleDebugContinue);
