@@ -198,7 +198,8 @@ void main() {
     );
   });
 
-  test('does not inspect parent directories outside workspace boundary', () async {
+  test('does not inspect parent directories outside workspace boundary',
+      () async {
     final workspace = path.join(temporaryHome.path, 'packages', 'app');
     await Directory(workspace).create(recursive: true);
     final fvmRoot = path.join(temporaryHome.path, '.cache', 'fvm');
@@ -254,6 +255,43 @@ void main() {
     );
 
     expect(resolution?.installation.rootPath, path.normalize(sdkRoot));
+    expect(
+      resolution?.installation.managerScope,
+      LumideSdkManagerScope.workspace,
+    );
+  });
+
+  test(
+      'discovers FVM configuration in workspace root when resolving subproject',
+      () async {
+    final workspace = path.join(temporaryHome.path, 'monorepo');
+    final subproject = path.join(workspace, 'apps', 'mobile');
+    await Directory(subproject).create(recursive: true);
+    final fvmRoot = path.join(temporaryHome.path, '.cache', 'fvm');
+    final sdkRoot = path.join(fvmRoot, 'versions', '3.44.9');
+    await _createFlutterSdk(
+      sdkRoot,
+      flutterVersion: '3.44.9',
+      dartVersion: '3.12.2',
+    );
+    await File(path.join(workspace, '.fvmrc')).writeAsString(
+      jsonEncode({'flutter': '3.44.9', 'cachePath': fvmRoot}),
+    );
+    final service = FlutterSdkDetectionService(
+      _FakeContext(workspaceRoot: workspace),
+      homePath: path.join(temporaryHome.path, 'empty-home'),
+      environment: const {},
+    );
+
+    final resolution = await service.resolve(
+      LumideSdkResolveRequest(
+        kind: LumideSdkKind.flutter,
+        workspacePath: subproject,
+      ),
+    );
+
+    expect(resolution?.installation.rootPath, path.normalize(sdkRoot));
+    expect(resolution?.installation.version, '3.44.9');
     expect(
       resolution?.installation.managerScope,
       LumideSdkManagerScope.workspace,
@@ -351,8 +389,27 @@ Future<void> _createFlutterSdk(
 String get _flutterFileName => Platform.isWindows ? 'flutter.bat' : 'flutter';
 
 class _FakeContext implements LumideContext {
+  _FakeContext({this.workspaceRoot});
+
+  final String? workspaceRoot;
+
   @override
   final LumideFileSystem fs = _FakeFileSystem();
+
+  @override
+  late final LumideWorkspace workspace = _FakeWorkspace(workspaceRoot);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _FakeWorkspace implements LumideWorkspace {
+  _FakeWorkspace(this.workspaceRoot);
+
+  final String? workspaceRoot;
+
+  @override
+  Future<String?> getRootUri() async => workspaceRoot;
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
