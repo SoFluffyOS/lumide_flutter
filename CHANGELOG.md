@@ -1,3 +1,10 @@
+## 1.12.1 (2026-09-11)
+
+### 🐞 Bug Fixes
+
+- Fix Flutter SDK detection for nested folder under monorepos.
+- Fix number parsing in settings.json configuration.
+
 ## 1.12.0 (2026-09-07)
 
 > This release requires a Lumide 0.21.0 and later. Do not update if you are using an older version.
