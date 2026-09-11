@@ -8,6 +8,16 @@ class SdkManager {
 
   final LumideContext context;
 
+  Future<String?> _workspaceRoot() async {
+    try {
+      final root = await context.workspace.getRootUri();
+      if (root case final uri? when uri.isNotEmpty) {
+        return path.normalize(path.absolute(uri));
+      }
+    } catch (_) {}
+    return null;
+  }
+
   Future<List<String>> getFlutterCommand(String projectRoot) async {
     try {
       final resolution = await context.sdks.resolve(
@@ -18,8 +28,39 @@ class SdkManager {
           executable: 'flutter',
         ),
       );
-      if (resolution != null && resolution.executable.isNotEmpty) {
-        return [resolution.executable, ...resolution.arguments];
+      if (resolution case final res? when res.executable.isNotEmpty) {
+        final isWorkspaceScoped =
+            res.installation.managerScope == LumideSdkManagerScope.workspace;
+        final wsRoot = await _workspaceRoot();
+        final normalizedProject = path.normalize(path.absolute(projectRoot));
+        final isAtWorkspaceRoot = switch (wsRoot) {
+          final root? => path.equals(root, normalizedProject),
+          _ => true,
+        };
+
+        if (isWorkspaceScoped || isAtWorkspaceRoot) {
+          return [res.executable, ...res.arguments];
+        }
+
+        if (wsRoot case final root?) {
+          final wsResolution = await context.sdks.resolve(
+            LumideSdkResolveRequest(
+              kind: LumideSdkKind.flutter,
+              providerId: 'flutter',
+              workspacePath: root,
+              executable: 'flutter',
+            ),
+          );
+          if (wsResolution case final wsRes? when wsRes.executable.isNotEmpty) {
+            final isWsScoped = wsRes.installation.managerScope ==
+                LumideSdkManagerScope.workspace;
+            if (isWsScoped) {
+              return [wsRes.executable, ...wsRes.arguments];
+            }
+          }
+        }
+
+        return [res.executable, ...res.arguments];
       }
       throw StateError('No Flutter SDK is available for $projectRoot');
     } on UnsupportedError {
@@ -29,26 +70,47 @@ class SdkManager {
   }
 
   Future<List<String>> _legacyFlutterCommand(String projectRoot) async {
-    final fvmConfig = path.join(projectRoot, '.fvm', 'fvm_config.json');
-    final fvmrc = path.join(projectRoot, '.fvmrc');
-    if (await context.fs.exists(fvmConfig) || await context.fs.exists(fvmrc)) {
-      final resolved = await _resolveViaShell('fvm');
-      if (resolved != null) return [resolved, 'flutter'];
+    final searchDirs = <String>[projectRoot];
+    final wsRoot = await _workspaceRoot();
+    final normalizedProject = path.normalize(path.absolute(projectRoot));
+    if (wsRoot case final root? when !path.equals(root, normalizedProject)) {
+      searchDirs.add(root);
     }
 
-    final puroJson = path.join(projectRoot, '.puro.json');
-    if (await context.fs.exists(puroJson)) {
-      final resolved = await _resolveViaShell('puro');
-      if (resolved != null) return [resolved, 'flutter'];
+    for (final dir in searchDirs) {
+      final fvmConfig = path.join(dir, '.fvm', 'fvm_config.json');
+      final fvmrc = path.join(dir, '.fvmrc');
+      final results = await Future.wait([
+        context.fs.exists(fvmConfig),
+        context.fs.exists(fvmrc),
+      ]);
+      if (results[0] || results[1]) {
+        final resolved = await _resolveViaShell('fvm');
+        if (resolved case final cmd?) return [cmd, 'flutter'];
+      }
+
+      final puroJson = path.join(dir, '.puro.json');
+      if (await context.fs.exists(puroJson)) {
+        final resolved = await _resolveViaShell('puro');
+        if (resolved case final cmd?) return [cmd, 'flutter'];
+      }
     }
 
     final resolved = await _resolveViaShell('flutter');
-    return [resolved ?? 'flutter'];
+    return [
+      switch (resolved) {
+        final cmd? => cmd,
+        _ => 'flutter',
+      },
+    ];
   }
 
   Future<String?> _resolveViaShell(String command) async {
     try {
-      final resolver = Platform.isWindows ? 'where' : 'which';
+      final resolver = switch (Platform.isWindows) {
+        true => 'where',
+        false => 'which',
+      };
       final result = await context.shell.run(resolver, [command]);
       if (result.exitCode != 0) return null;
       final candidates = result.stdout
@@ -60,9 +122,10 @@ class SdkManager {
       if (!Platform.isWindows) return candidates.firstOrNull;
       for (final candidate in candidates) {
         final lower = candidate.toLowerCase();
-        if (lower.endsWith('.exe') ||
+        final isExecutable = lower.endsWith('.exe') ||
             lower.endsWith('.bat') ||
-            lower.endsWith('.cmd')) {
+            lower.endsWith('.cmd');
+        if (isExecutable) {
           return candidate;
         }
       }

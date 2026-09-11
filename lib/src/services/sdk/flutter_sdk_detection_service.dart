@@ -585,10 +585,25 @@ class FlutterSdkDetectionService {
     }
   }
 
+  Future<String> _resolveWorkspaceBoundary(String workspacePath) async {
+    final normalized = path.normalize(path.absolute(workspacePath));
+    try {
+      final rootUri = await context.workspace.getRootUri();
+      if (rootUri case final root? when root.isNotEmpty) {
+        final normalizedRoot = path.normalize(path.absolute(root));
+        final isContained = path.equals(normalizedRoot, normalized) ||
+            path.isWithin(normalizedRoot, normalized);
+        if (isContained) return normalizedRoot;
+      }
+    } catch (_) {}
+    return normalized;
+  }
+
   Future<({String root, String? fvmrc, String? legacyConfig})?> _findFvmProject(
       String workspacePath) async {
+    final boundary = await _resolveWorkspaceBoundary(workspacePath);
     for (final directory
-        in _ancestorDirectories(workspacePath, stopAt: workspacePath)) {
+        in _ancestorDirectories(workspacePath, stopAt: boundary)) {
       final fvmrc = path.join(directory, '.fvmrc');
       final legacyConfig = path.join(
         directory,
@@ -604,8 +619,14 @@ class FlutterSdkDetectionService {
       if (hasFvmrc || hasLegacy) {
         return (
           root: directory,
-          fvmrc: hasFvmrc ? fvmrc : null,
-          legacyConfig: hasLegacy ? legacyConfig : null,
+          fvmrc: switch (hasFvmrc) {
+            true => fvmrc,
+            false => null,
+          },
+          legacyConfig: switch (hasLegacy) {
+            true => legacyConfig,
+            false => null,
+          },
         );
       }
     }
@@ -616,8 +637,9 @@ class FlutterSdkDetectionService {
     String workspacePath,
     String relativePath,
   ) async {
+    final boundary = await _resolveWorkspaceBoundary(workspacePath);
     for (final directory
-        in _ancestorDirectories(workspacePath, stopAt: workspacePath)) {
+        in _ancestorDirectories(workspacePath, stopAt: boundary)) {
       final candidate = path.join(directory, relativePath);
       if (await _safeFileExists(candidate)) return candidate;
     }
@@ -636,11 +658,19 @@ class FlutterSdkDetectionService {
     String startPath, {
     String? stopAt,
   }) sync* {
-    final root = path.normalize(path.absolute(stopAt ?? startPath));
+    final root = switch (stopAt) {
+      final stop? when stop.isNotEmpty => path.normalize(path.absolute(stop)),
+      _ => null,
+    };
     var current = path.normalize(path.absolute(startPath));
     while (true) {
       yield current;
-      if (path.equals(current, root) || !path.isWithin(root, current)) return;
+      if (root case final boundary?) {
+        if (path.equals(current, boundary) ||
+            !path.isWithin(boundary, current)) {
+          return;
+        }
+      }
       final parent = path.dirname(current);
       if (path.equals(parent, current)) return;
       current = parent;
