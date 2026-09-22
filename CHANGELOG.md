@@ -1,3 +1,11 @@
+## 1.13.0 (2026-09-22)
+
+### 🚀 New Features
+
+- List and launch stopped Android emulators.
+- Support to open separated DevTools.
+- Support to Toggle Performance Overlay/Widget Selection directly in Flutter menu or Command Palette.
+
 ## 1.12.1 (2026-09-11)
 
 ### 🐞 Bug Fixes

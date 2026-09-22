@@ -4,76 +4,38 @@
 
 The official Flutter extension for [Lumide IDE](https://lumide.dev).
 
-`lumide_flutter` turns Lumide into a fully-fledged Flutter development environment. It provides project management, device handling, debugging tools, and real-time log streaming.
+## Highlights
 
-## Features
-
-### 🚀 Project Management
-- **Create Projects**: Easily start new Flutter projects (`flutter.create`).
-- **Dependency Management**: Run `pub get` for single projects or the entire workspace in parallel.
-- **Environment Checks**: Built-in `flutter doctor` integration to diagnose issues.
-
-### 📱 Device Manager
-- **Dynamic Detection**: Automatically detects connected devices (iOS, Android, Web, Desktop).
-- **Quick Switching**: Switch active devices instantly via the Status Bar or Command Palette.
-- **Platform Icons**: Visual indicators for device types (Mobile, Web, Monitor).
-
-### ⚡ Run & Debug
-- **Debug Sessions**: Launch Flutter under the debugger from the toolbar Debug button or the `Flutter: Debug` command.
-- **Breakpoints**: Set breakpoints in the editor gutter and inspect verified breakpoint state in Lumide’s debug panel.
-- **Stack & Variables**: Inspect stack frames, scopes, and expandable variables directly in the debug panel when execution pauses.
-- **Stepping Controls**: Continue, Pause, Step Over, Step Into, Step Out, and Stop are exposed through the debug toolbar.
-- **Exception Filters**: Switch between ignored, uncaught, and all exceptions from the debug panel.
-- **Hot Reload**: Trigger hot reload on save (configurable), via the toolbar, or with `Cmd + \`.
-- **Hot Restart**: Full application restart with `Cmd + Shift + \` or a single click on the toolbar.
-- **DevTools**: Open [Dart DevTools](https://flutter.dev/devtools) directly within a Lumide pane or in your external browser.
-- **Debug Output**: In debug mode, Flutter logs are shown inside the debug panel’s Output section so logs and paused-state inspection stay together.
-- **Run Output**: In run mode, view colored, real-time logs in the **Flutter** output channel. Separate **Build Output** keeps things clean.
-
-### 🛠 Editor Integration
-- **Status Bar**: Shows the active Flutter SDK version. Click to access the *Flutter Tools* menu.
-- **SDK Manager**: Browse official stable and beta releases, install verified SDK archives, validate installations, and choose user or workspace defaults from Lumide Settings.
-- **Existing SDKs**: Detects Flutter on `PATH` plus workspace selections from FVM and Puro without taking ownership of those installations.
-- **Toolbar**: Context-aware controls (Run, Stop, Reload, Restart) appear when a Flutter project is active.
-- **Debug Navigation**: When a breakpoint is hit, Lumide jumps to the stopped source location and lets you navigate by stack frame or breakpoint entry.
+- Run, debug, attach, hot reload, and hot restart Flutter apps.
+- Launch and switch devices, including stopped Android emulators and iOS Simulator.
+- Set targets, flavors, build modes, and launch configurations.
+- Use breakpoints, stepping, stack frames, scopes, variables, and evaluation.
+- Open focused DevTools panes: Inspector, Performance, CPU Profiler, Memory, Network, and Logging.
+- Click a widget in the running app and jump to its Flutter source.
+- Toggle the performance overlay from the command palette.
+- Run `flutter doctor`, `pub get`, `clean`, and create new projects.
+- Select Flutter SDKs from PATH, FVM, Puro, or Lumide’s SDK manager.
 
 ## Commands
 
-Access these via the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`):
+Use the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`).
 
-| Command ID | Title | Description |
-|---|---|---|
-| `flutter.doctor` | **Flutter: Doctor** | Run diagnostics |
-| `flutter.pub.get` | **Flutter: Pub Get** | Get packages for current project |
-| `flutter.clean` | **Flutter: Clean** | Delete build/ directory |
-| `flutter.create` | **Flutter: New Project** | Create a basic Flutter app |
-| `flutter.selectDevice` | **Flutter: Select Device** | Choose run target |
-| `flutter.run` | **Flutter: Run** | Start app on selected device |
-| `flutter.debug` | **Flutter: Debug** | Start app on selected device with debugger attached |
-| `flutter.hotReload` | **Flutter: Hot Reload** (`Cmd+\`) | Update code changes (JIT) |
-| `flutter.hotRestart` | **Flutter: Hot Restart** (`Cmd+Shift+\`) | Restart app state |
-| `flutter.stop` | **Flutter: Stop App** | Terminate process |
-| `flutter.openDevToolsWebview` | **Flutter: Open DevTools** | Open in split pane |
+| Command | Purpose |
+| --- | --- |
+| `flutter.run` / `flutter.debug` / `flutter.attach` | Start or attach to an app |
+| `flutter.selectDevice` | Choose a device or launch an AVD |
+| `flutter.selectTarget` | Choose the Dart entry point |
+| `flutter.hotReload` / `flutter.hotRestart` | Apply code changes or reset state |
+| `flutter.devtools.<page>` | Open one DevTools page |
+| `flutter.toggleWidgetInspector` | Click a widget and open its source |
+| `flutter.togglePerformanceOverlay` | Toggle the runtime overlay |
+| `flutter.doctor` / `flutter.pub.get` / `flutter.clean` | Run Flutter tools |
 
-## Configuration
+Hot reload on save is enabled by default. Configure it with `flutter.hotReloadOnSave`.
 
-Customize behavior in your `.lumide/settings.json` or Workspace Settings:
+## SDKs
 
-| Key | Default | Description |
-|---|---|---|
-| `flutter.hotReloadOnSave` | `true` | Trigger hot reload when saving `.dart` files |
-| `flutter.clearLogOnHotRestart` | `true` | Clear the output channel when restarting |
-| `flutter.logEntryLimit` | `5000` | Max lines in the Flutter output channel |
-
-## Flutter SDK selection
-
-Open **SDKs: Manage SDKs** from the Command Palette to install or select a
-Flutter SDK. A Flutter SDK on `PATH`, an FVM workspace, or a Puro workspace also
-works. For Flutter projects, Lumide automatically uses the Dart SDK bundled in
-the selected Flutter installation.
-
-The plugin retains PATH/FVM/Puro discovery when running against an older Lumide
-host that does not expose SDK management.
+Use **SDKs: Manage SDKs** to select or install Flutter. PATH, FVM, and Puro installations are also detected.
 
 ## License
 
