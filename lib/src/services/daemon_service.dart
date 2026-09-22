@@ -3,9 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:lumide_api/lumide_api.dart';
-import 'package:lumide_flutter/src/services/log_service.dart';
-import 'package:lumide_flutter/src/services/project_service.dart';
-import 'package:lumide_flutter/src/services/sdk_manager.dart';
+import 'package:lumide_flutter/src/services/services.dart';
 
 class DaemonService {
   final LumideContext context;
@@ -17,6 +15,7 @@ class DaemonService {
   StreamSubscription<String>? _stdoutSub;
   StreamSubscription<String>? _stderrSub;
 
+  final Duration requestTimeout;
   int _requestId = 0;
   final Map<int, Completer<dynamic>> _pendingRequests = {};
 
@@ -43,7 +42,8 @@ class DaemonService {
   bool get isRunning => _process != null;
 
   DaemonService(
-      this.context, this.projectService, this.sdkManager, this.logService);
+      this.context, this.projectService, this.sdkManager, this.logService,
+      {this.requestTimeout = const Duration(seconds: 30)});
 
   Future<void> start() {
     if (_disposed) {
@@ -208,12 +208,13 @@ class DaemonService {
 
   Future<dynamic> _sendRequest(String method,
       [Map<String, dynamic>? params]) async {
-    if (_process == null) await start();
+    if (_disposed) throw StateError('Daemon service is disposed');
+    if (_process == null) await start().timeout(requestTimeout);
     final process = _process;
     if (process == null) {
       throw Exception('Flutter daemon is not running');
     }
-    await _readyCompleter.future;
+    await _readyCompleter.future.timeout(requestTimeout);
     if (!identical(_process, process)) {
       throw Exception('Flutter daemon changed while sending a request');
     }
@@ -231,9 +232,13 @@ class DaemonService {
     }
 
     final payload = [request];
-    process.stdin.writeln(jsonEncode(payload));
-
-    return completer.future;
+    try {
+      process.stdin.writeln(jsonEncode(payload));
+      return await completer.future.timeout(requestTimeout);
+    } finally {
+      // Late responses are ignored and cannot retain timed-out requests.
+      _pendingRequests.remove(id);
+    }
   }
 
   void _failPendingRequests(String error) {
@@ -314,6 +319,16 @@ class DaemonService {
       return result.cast<Map<String, dynamic>>();
     }
     return [];
+  }
+
+  Future<List<Map<String, dynamic>>> getEmulators() async {
+    final result = await _sendRequest('emulator.getEmulators');
+    if (result is List) return result.cast<Map<String, dynamic>>();
+    return [];
+  }
+
+  Future<void> launchEmulator(String emulatorId) async {
+    await _sendRequest('emulator.launch', {'emulatorId': emulatorId});
   }
 
   Future<void> enableDevicePolling() async {

@@ -4,13 +4,7 @@ import 'dart:io';
 
 import 'package:lumide_api/lumide_api.dart';
 import 'package:lumide_flutter/src/constants.dart';
-import 'package:lumide_flutter/src/services/daemon_service.dart';
-import 'package:lumide_flutter/src/services/device_service.dart';
-import 'package:lumide_flutter/src/services/launch_config_service.dart';
-import 'package:lumide_flutter/src/services/launch_source_resolver.dart';
-import 'package:lumide_flutter/src/services/project_service.dart';
-import 'package:lumide_flutter/src/services/sdk_manager.dart';
-import 'package:lumide_flutter/src/services/target_service.dart';
+import 'package:lumide_flutter/src/services/services.dart';
 import 'package:path/path.dart' as path;
 import 'package:vm_service/vm_service.dart';
 import 'package:vm_service/vm_service_io.dart';
@@ -86,6 +80,12 @@ class RunService {
   bool _isConnectingToVmService = false;
 
   VmService? _vmService;
+  WidgetInspectorService? _widgetInspector;
+  late final _devToolsPanels = DevToolsPanelService(
+    context.window,
+    daemonService.logService.error,
+  );
+  int _vmGeneration = 0;
   StreamSubscription<Event>? _vmDebugSub;
   StreamSubscription<Event>? _vmStdoutSub;
   StreamSubscription<Event>? _vmStderrSub;
@@ -94,8 +94,6 @@ class RunService {
   String? _devToolsServerHost;
   int? _devToolsServerPort;
   String? _wsUri;
-
-  LumideWebviewPanel? _devToolsPanel;
 
   String? _activeAppId;
   String? _activeIsolateId;
@@ -656,16 +654,19 @@ class RunService {
         label: 'Debug (default)',
         description: 'Hot reload',
         payload: 'debug',
+        icon: iconBug,
       ),
       const QuickPickItem(
         label: 'Profile',
         description: '--profile',
         payload: 'profile',
+        icon: iconGauge,
       ),
       const QuickPickItem(
         label: 'Release',
         description: '--release',
         payload: 'release',
+        icon: iconPackage,
       ),
     ];
 
@@ -1309,9 +1310,6 @@ class RunService {
     await _disconnectVmService();
     await _showRunControls(isRunning: false);
 
-    await _devToolsPanel?.dispose();
-    _devToolsPanel = null;
-
     if (wasDebug) {
       await _endDebugSession(
         statusMessage: 'Process exited with code $code.',
@@ -1563,19 +1561,25 @@ class RunService {
   Future<void> _connectToVmService(String wsUri) async {
     if (_vmService != null || _isConnectingToVmService) return;
     _isConnectingToVmService = true;
+    final generation = _vmGeneration;
 
     try {
       await _logInfo('Connecting to VM Service at $wsUri...');
 
       final vmService = await vmServiceConnectUri(wsUri);
+      if (generation != _vmGeneration || !_isRunning) {
+        await vmService.dispose();
+        return;
+      }
       _vmService = vmService;
 
       if (_vmService case final service?) {
         await service.streamListen(EventStreams.kLogging);
+        if (generation != _vmGeneration) return;
 
-        if (_isDebugMode) {
-          await service.streamListen(EventStreams.kDebug);
-        }
+        _widgetInspector = WidgetInspectorService(context, service);
+        await service.streamListen(EventStreams.kDebug);
+        if (generation != _vmGeneration) return;
 
         _vmLoggingSub = service.onLoggingEvent.listen((event) {
           final logRecord = event.logRecord;
@@ -1591,20 +1595,19 @@ class RunService {
           );
         });
 
-        if (_isDebugMode) {
-          _vmDebugSub = service.onDebugEvent.listen((event) {
-            unawaited(_handleVmDebugEvent(event));
-          });
-
-          await _refreshActiveIsolate();
-        }
+        _vmDebugSub = service.onDebugEvent.listen((event) {
+          unawaited(_widgetInspector?.handleDebugEvent(event));
+          unawaited(_handleVmDebugEvent(event));
+        });
+        await _refreshActiveIsolate();
 
         await _logInfo('Connected to VM Service. Logs streaming...');
       }
     } catch (e) {
       await _logError('Failed to connect to VM Service', e);
+      if (generation == _vmGeneration) await _disconnectVmService();
     } finally {
-      _isConnectingToVmService = false;
+      if (generation == _vmGeneration) _isConnectingToVmService = false;
     }
   }
 
@@ -2067,16 +2070,38 @@ class RunService {
   }
 
   Future<void> _disconnectVmService() async {
-    await _vmDebugSub?.cancel();
-    _vmDebugSub = null;
-    await _vmStdoutSub?.cancel();
-    _vmStdoutSub = null;
-    await _vmStderrSub?.cancel();
-    _vmStderrSub = null;
-    await _vmLoggingSub?.cancel();
-    _vmLoggingSub = null;
-    await _vmService?.dispose();
+    _vmGeneration++;
+    _isConnectingToVmService = false;
+    final inspector = _widgetInspector;
+    _widgetInspector = null;
+    final service = _vmService;
     _vmService = null;
+    final subscriptions = [
+      _vmDebugSub,
+      _vmStdoutSub,
+      _vmStderrSub,
+      _vmLoggingSub
+    ];
+    _vmDebugSub = null;
+    _vmStdoutSub = null;
+    _vmStderrSub = null;
+    _vmLoggingSub = null;
+    await Future.wait([
+      _devToolsPanels.closeSession(),
+      for (final subscription in subscriptions)
+        if (subscription != null) _cleanupVmResource(subscription.cancel),
+      if (inspector != null) _cleanupVmResource(inspector.dispose),
+    ]);
+    if (service != null) await _cleanupVmResource(service.dispose);
+  }
+
+  Future<void> _cleanupVmResource(Future<void> Function() cleanup) async {
+    try {
+      await cleanup().timeout(const Duration(seconds: 5));
+    } catch (error) {
+      daemonService.logService
+          .error('Failed to clean up Flutter runtime resource', error);
+    }
   }
 
   Future<void> hotReload() async {
@@ -2738,11 +2763,14 @@ class RunService {
 
   Future<String?> _getOrCreateDevToolsUrl() async {
     if (_devToolsUrl != null) return _devToolsUrl;
-    if (_wsUri == null) return null;
+    final wsUri = _wsUri;
+    final generation = _vmGeneration;
+    if (wsUri == null || !_isRunning) return null;
 
     if (_devToolsServerHost == null || _devToolsServerPort == null) {
       try {
         final result = await daemonService.serveDevTools();
+        if (generation != _vmGeneration || !_isRunning) return null;
         if (result['host'] != null && result['port'] != null) {
           _devToolsServerHost = result['host'] as String?;
           _devToolsServerPort = result['port'] as int?;
@@ -2754,7 +2782,7 @@ class RunService {
     }
 
     if (_devToolsServerHost != null && _devToolsServerPort != null) {
-      final encodedUri = Uri.encodeComponent(_wsUri!);
+      final encodedUri = Uri.encodeComponent(wsUri);
       _devToolsUrl =
           'http://$_devToolsServerHost:$_devToolsServerPort/?uri=$encodedUri';
     }
@@ -2783,7 +2811,29 @@ class RunService {
     );
   }
 
-  Future<void> openDevToolsInWebview() async {
+  Future<void> toggleWidgetInspector() async {
+    final inspector = _widgetInspector;
+    if (inspector == null) {
+      await context.window.showMessage(
+          'Start a Flutter debug build and wait for the VM service to connect.',
+          type: MessageType.warning);
+      return;
+    }
+    await inspector.toggleInspector();
+  }
+
+  Future<void> togglePerformanceOverlay() async {
+    final inspector = _widgetInspector;
+    if (inspector == null) {
+      await context.window.showMessage(
+          'Start a Flutter debug or profile build and wait for the VM service to connect.',
+          type: MessageType.warning);
+      return;
+    }
+    await inspector.togglePerformanceOverlay();
+  }
+
+  Future<void> openDevToolsInWebview({DevToolsPage? page}) async {
     if (!_isRunning) {
       await context.window.showMessage(
         'Start a Flutter app before opening DevTools.',
@@ -2792,20 +2842,20 @@ class RunService {
       return;
     }
 
-    final url = await _getOrCreateDevToolsUrl();
-    if (url != null) {
-      await _devToolsPanel?.dispose();
-      _devToolsPanel = await context.window.createWebviewPanel(
-        'flutter.devtools',
-        'Flutter DevTools',
-        options: {'url': url},
-      );
-      return;
+    try {
+      await _devToolsPanels.open(page, () async {
+        final url = await _getOrCreateDevToolsUrl();
+        if (url == null && _isRunning) {
+          await context.window
+              .showMessage('DevTools URL not ready yet. Try again shortly.');
+        }
+        return url;
+      });
+    } catch (error) {
+      await _logError('Failed to open DevTools', error);
+      await context.window.showMessage('Could not open DevTools: $error',
+          type: MessageType.error);
     }
-
-    await context.window.showMessage(
-      'DevTools URL not ready yet. Try again shortly.',
-    );
   }
 
   Future<void> stop() async {
@@ -2872,9 +2922,6 @@ class RunService {
       _hasDebugSession = false;
     }
     await _channel?.dispose();
-
-    await _devToolsPanel?.dispose();
-    _devToolsPanel = null;
   }
 
   Future<void> _logInfo(String message) async {

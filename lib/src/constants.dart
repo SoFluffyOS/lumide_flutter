@@ -62,9 +62,25 @@ const String iconTarget = 'crosshair';
 const String iconCode = 'code';
 const String iconEdit = 'pencil';
 const String iconTerminal = 'terminal';
+const String iconPackage = 'package';
+const String iconWrench = 'wrench';
+const String iconStethoscope = 'stethoscope';
+const String iconScanEye = 'scan-eye';
+const String iconGauge = 'gauge';
+const String iconCpu = 'cpu';
+const String iconMemoryStick = 'memory-stick';
+const String iconNetwork = 'network';
+const String iconLogs = 'logs';
+const String iconSettings = 'settings';
+const String iconSliders = 'sliders-horizontal';
+const String iconExternalLink = 'external-link';
 
 // assets
 const String assetIconFlutterSolid = 'icon_flutter_solid.svg';
 const String assetIconFlutter = 'assets/icon_flutter.png';
 const String assetIconDart = 'assets/icon_dart.png';
 const String folderAssets = 'assets';
+
+const String cmdFlutterToggleInspector = 'flutter.toggleWidgetInspector';
+const String cmdFlutterTogglePerformanceOverlay =
+    'flutter.togglePerformanceOverlay';

@@ -2,9 +2,7 @@ import 'dart:io' as io;
 
 import 'package:lumide_api/lumide_api.dart';
 import 'package:lumide_flutter/src/constants.dart';
-import 'package:lumide_flutter/src/services/project_service.dart';
-import 'package:lumide_flutter/src/services/run_service.dart';
-import 'package:lumide_flutter/src/services/sdk_manager.dart';
+import 'package:lumide_flutter/src/services/services.dart';
 import 'package:path/path.dart' as path;
 
 class FlutterService {
@@ -237,19 +235,19 @@ class FlutterService {
           label: 'Package',
           description: 'Shareable Dart/Flutter package',
           payload: 'package',
-          icon: iconArchive,
+          icon: iconPackage,
         ),
         QuickPickItem(
           label: 'Plugin',
           description: 'Flutter plugin with platform code',
           payload: 'plugin',
-          icon: iconZap,
+          icon: iconWrench,
         ),
         QuickPickItem(
           label: 'Module',
           description: 'Flutter module for an existing app',
           payload: 'module',
-          icon: iconLayout,
+          icon: iconPackage,
         ),
       ],
       placeholder: 'Select Flutter project template',
@@ -347,7 +345,7 @@ class FlutterService {
           label: 'Run Pub Get',
           description: 'Default',
           payload: '',
-          icon: iconArchive,
+          icon: iconPackage,
         ),
         QuickPickItem(
           label: 'Skip Pub Get',
@@ -477,7 +475,7 @@ class FlutterService {
         detail: 'flutter pub get',
         tooltip: 'Run flutter pub get in the current Flutter project.',
         payload: 'pubGet',
-        icon: iconArchive,
+        icon: iconPackage,
       ),
     );
 
@@ -502,7 +500,7 @@ class FlutterService {
         tooltip:
             'Run flutter pub get in every Flutter project found in the workspace.',
         payload: 'pubGetAll',
-        icon: iconArchive,
+        icon: iconPackage,
       ),
     );
 
@@ -515,11 +513,30 @@ class FlutterService {
         detail: 'flutter doctor',
         tooltip: 'Run flutter doctor and show diagnostic output.',
         payload: 'doctor',
-        icon: iconZap,
+        icon: iconStethoscope,
       ),
     );
 
     if (runService.isRunning) {
+      items.add(const QuickPickItem(label: '', isSeparator: true));
+      items.addAll([
+        for (final page in DevToolsPage.values)
+          QuickPickItem(
+              label: page.title,
+              detail: 'Open in a separate pane',
+              payload: page.command,
+              icon: page.icon),
+        const QuickPickItem(
+            label: 'Toggle Widget Selection',
+            detail: 'Click a widget in the app to open its source',
+            payload: cmdFlutterToggleInspector,
+            icon: iconScanEye),
+        const QuickPickItem(
+            label: 'Toggle Performance Overlay',
+            payload: cmdFlutterTogglePerformanceOverlay,
+            icon: iconGauge),
+      ]);
+      items.add(const QuickPickItem(label: '', isSeparator: true));
       items.add(
         const QuickPickItem(
           label: 'Open DevTools',
@@ -535,7 +552,7 @@ class FlutterService {
           detail: 'Open externally',
           tooltip: 'Open Dart DevTools in the system browser.',
           payload: 'devtools',
-          icon: iconGlobe,
+          icon: iconExternalLink,
         ),
       );
     }
@@ -559,7 +576,19 @@ class FlutterService {
 
     if (selected != null) {
       final payload = selected.payload as String;
+      for (final page in DevToolsPage.values) {
+        if (payload == page.command) {
+          await runService.openDevToolsInWebview(page: page);
+          return;
+        }
+      }
       switch (payload) {
+        case cmdFlutterToggleInspector:
+          await runService.toggleWidgetInspector();
+          return;
+        case cmdFlutterTogglePerformanceOverlay:
+          await runService.togglePerformanceOverlay();
+          return;
         case 'pubGet':
           await pubGet();
           break;

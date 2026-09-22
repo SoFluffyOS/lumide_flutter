@@ -287,6 +287,22 @@ class FlutterPlugin extends LumidePlugin {
         title: 'Flutter: Open DevTools (Browser)',
         callback: ([args]) => runService.openDevTools(),
       ),
+      for (final page in DevToolsPage.values)
+        context.commands.registerCommand(
+          id: page.command,
+          title: 'Flutter: Open ${page.title}',
+          callback: ([args]) => runService.openDevToolsInWebview(page: page),
+        ),
+      context.commands.registerCommand(
+        id: cmdFlutterToggleInspector,
+        title: 'Flutter: Toggle Widget Selection',
+        callback: ([args]) => runService.toggleWidgetInspector(),
+      ),
+      context.commands.registerCommand(
+        id: cmdFlutterTogglePerformanceOverlay,
+        title: 'Flutter: Toggle Performance Overlay',
+        callback: ([args]) => runService.togglePerformanceOverlay(),
+      ),
       context.commands.registerCommand(
         id: cmdFlutterTools,
         title: 'Flutter: Tools Menu',

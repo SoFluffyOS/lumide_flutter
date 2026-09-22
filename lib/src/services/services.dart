@@ -1,5 +1,7 @@
 export 'daemon_service.dart';
 export 'device_service.dart';
+export 'devtools_page.dart';
+export 'devtools_panel_service.dart';
 export 'flutter_service.dart';
 export 'launch_config_service.dart';
 export 'launch_source_resolver.dart';
@@ -10,3 +12,4 @@ export 'sdk/sdk.dart';
 export 'sdk_manager.dart';
 export 'status_bar_service.dart';
 export 'target_service.dart';
+export 'widget_inspector_service.dart';

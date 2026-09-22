@@ -1,10 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io' as io;
 
 import 'package:lumide_api/lumide_api.dart';
 import 'package:lumide_flutter/src/constants.dart';
-import 'package:lumide_flutter/src/services/daemon_service.dart';
-import 'package:lumide_flutter/src/services/status_bar_service.dart';
+import 'package:lumide_flutter/src/services/services.dart';
 
 class DeviceService {
   final LumideContext context;
@@ -12,7 +12,17 @@ class DeviceService {
   final DaemonService daemonService;
 
   List<Map<String, dynamic>> _devices = [];
+  List<Map<String, dynamic>> _emulators = [];
   String? _selectedDeviceId;
+  bool _launchingEmulator = false;
+  bool _disposed = false;
+  int _selectionVersion = 0;
+  final _disposeSignal = Completer<void>();
+  Future<void>? _refreshInFlight;
+  Future<void>? _pickerInFlight;
+  final Duration emulatorBootTimeout;
+  final Duration emulatorPollInterval;
+  final Duration discoveryTimeout;
   bool _isLoading = false;
   bool _isInitialized = false;
   Future<void> Function()? onDidChange;
@@ -20,7 +30,14 @@ class DeviceService {
   StreamSubscription? _deviceAddedSub;
   StreamSubscription? _deviceRemovedSub;
 
-  DeviceService(this.context, this.statusBar, this.daemonService);
+  DeviceService(
+    this.context,
+    this.statusBar,
+    this.daemonService, {
+    this.emulatorBootTimeout = const Duration(seconds: 90),
+    this.emulatorPollInterval = const Duration(seconds: 2),
+    this.discoveryTimeout = const Duration(seconds: 5),
+  });
 
   bool get _isMacOS => io.Platform.isMacOS;
 
@@ -49,15 +66,30 @@ class DeviceService {
     });
   }
 
-  Future<void> refreshDevices() async {
-    _isLoading = true;
-    await _notifyChanged();
+  Future<void> refreshDevices({bool showLoading = true}) {
+    if (_disposed) return Future.value();
+    final pending = _refreshInFlight;
+    if (pending != null) return pending;
+    final refresh = _refreshDevices(showLoading: showLoading);
+    _refreshInFlight = refresh;
+    return refresh.whenComplete(() {
+      if (identical(_refreshInFlight, refresh)) _refreshInFlight = null;
+    });
+  }
 
+  Future<void> _refreshDevices({required bool showLoading}) async {
+    final previousDevices = jsonEncode(_devices);
+    final previousSelection = _selectedDeviceId;
+    if (showLoading) {
+      _isLoading = true;
+      await _notifyChanged();
+    }
     try {
       await daemonService.enableDevicePolling();
       final devices =
           List<Map<String, dynamic>>.from(await daemonService.getDevices())
             ..sort((a, b) => _deviceSortRank(a).compareTo(_deviceSortRank(b)));
+      if (_disposed) return;
       _devices = List<Map<String, dynamic>>.from(devices);
 
       if (_devices.isNotEmpty) {
@@ -76,12 +108,40 @@ class DeviceService {
     } finally {
       _isLoading = false;
       _isInitialized = true;
-      await _notifyChanged();
+      if (showLoading ||
+          previousDevices != jsonEncode(_devices) ||
+          previousSelection != _selectedDeviceId) {
+        await _notifyChanged();
+      }
     }
   }
 
-  Future<void> selectDevice([Map<String, int>? position]) async {
+  Future<void> selectDevice([Map<String, int>? position]) {
+    if (_disposed) return Future.value();
+    final pending = _pickerInFlight;
+    if (pending != null) return pending;
+    final picker = _selectDevice(position);
+    _pickerInFlight = picker;
+    return picker.whenComplete(() {
+      if (identical(_pickerInFlight, picker)) _pickerInFlight = null;
+    });
+  }
+
+  Future<void> _selectDevice(Map<String, int>? position) async {
     if (!_isInitialized) await refreshDevices();
+    if (_disposed) return;
+    try {
+      _emulators = await daemonService.getEmulators().timeout(discoveryTimeout);
+    } catch (error) {
+      if (_disposed) return;
+      _emulators = [];
+      daemonService.logService.error('Failed to list Android emulators', error);
+      await context.window.showMessage(
+        'Could not list Android emulators. Check the Android SDK and try again.',
+        type: MessageType.warning,
+      );
+    }
+    if (_disposed) return;
     final devices = List<Map<String, dynamic>>.from(_devices)
       ..sort((a, b) => _deviceSortRank(a).compareTo(_deviceSortRank(b)));
 
@@ -106,7 +166,29 @@ class DeviceService {
       );
     }).toList();
 
-    items.add(const QuickPickItem(label: '', isSeparator: true));
+    final emulators = _emulators
+        .where((emulator) =>
+            emulator['id'] is String && emulator['id'] != 'apple_ios_simulator')
+        .where((emulator) => !devices.any(
+              (device) => device['emulatorId'] == emulator['id'],
+            ))
+        .toList(growable: false);
+    if (devices.isNotEmpty && emulators.isNotEmpty) {
+      items.add(const QuickPickItem(label: '', isSeparator: true));
+    }
+    for (final emulator in emulators) {
+      final id = emulator['id'] as String;
+      items.add(QuickPickItem(
+        label: emulator['name']?.toString() ?? id,
+        description: 'Android Virtual Device',
+        detail: 'Launch $id',
+        payload: 'emulator:$id',
+        icon: iconSmartphone,
+      ));
+    }
+    if (items.isNotEmpty) {
+      items.add(const QuickPickItem(label: '', isSeparator: true));
+    }
 
     if (_isMacOS && !hasIosSimulatorDevice) {
       items.add(const QuickPickItem(
@@ -134,24 +216,85 @@ class DeviceService {
       position: position,
     );
 
+    if (_disposed) return;
     if (selected != null) {
       final payload = selected.payload as String;
+      if (payload.startsWith('emulator:')) {
+        await launchEmulator(payload.substring('emulator:'.length));
+        return;
+      }
       if (payload == 'refresh') {
         await context.window.showMessage('Scanning for connected devices');
         await refreshDevices();
-        await selectDevice(position); // Re-open picker
+        await _selectDevice(position); // Re-open the same picker operation
       } else if (payload == 'start-ios-simulator') {
+        _selectionVersion++;
         await _startIosSimulator();
       } else {
+        _selectionVersion++;
         _selectedDeviceId = payload;
         await _notifyChanged();
       }
     }
   }
 
+  Future<void> launchEmulator(String emulatorId) async {
+    if (_launchingEmulator || _disposed) return;
+    _launchingEmulator = true;
+    final selectionVersion = ++_selectionVersion;
+    final watch = Stopwatch()..start();
+    Future<T> withinDeadline<T>(Future<T> operation) => operation.timeout(
+          emulatorBootTimeout - watch.elapsed,
+        );
+    try {
+      await context.window
+          .showMessage('Starting Android emulator $emulatorId...');
+      await Future.any<void>([
+        withinDeadline(daemonService.launchEmulator(emulatorId)),
+        _disposeSignal.future,
+      ]);
+      while (!_disposed && selectionVersion == _selectionVersion) {
+        await Future.any<void>([
+          withinDeadline(refreshDevices(showLoading: false)),
+          _disposeSignal.future,
+        ]);
+        if (_disposed || selectionVersion != _selectionVersion) return;
+        final device = _devices
+            .where(
+              (device) => device['emulatorId'] == emulatorId,
+            )
+            .firstOrNull;
+        if (_trySelectDevice(device)) {
+          await _notifyChanged();
+          return;
+        }
+        await Future.any<void>([
+          withinDeadline(Future<void>.delayed(emulatorPollInterval)),
+          _disposeSignal.future,
+        ]);
+      }
+    } on TimeoutException {
+      if (_disposed || selectionVersion != _selectionVersion) return;
+      await context.window.showMessage(
+        'Android emulator did not become ready in time. It may still be booting; use Refresh Devices to check.',
+        type: MessageType.warning,
+      );
+    } catch (error) {
+      if (_disposed || selectionVersion != _selectionVersion) return;
+      await context.window.showMessage(
+        'Failed to launch Android emulator: $error',
+        type: MessageType.error,
+      );
+    } finally {
+      watch.stop();
+      _launchingEmulator = false;
+    }
+  }
+
   Future<void> selectDeviceById(String deviceId) async {
     final match = _devices.where((d) => d['id'] == deviceId).firstOrNull;
-    if (match != null) {
+    if (match != null && !_disposed) {
+      _selectionVersion++;
       _selectedDeviceId = deviceId;
       await _notifyChanged();
     }
@@ -296,6 +439,7 @@ class DeviceService {
   }
 
   Future<void> _notifyChanged() async {
+    if (_disposed) return;
     final callback = onDidChange;
     if (callback != null) {
       await callback();
@@ -384,6 +528,10 @@ class DeviceService {
   String? get selectedDeviceId => _selectedDeviceId;
 
   Future<void> dispose() async {
+    if (_disposed) return;
+    _disposed = true;
+    _selectionVersion++;
+    _disposeSignal.complete();
     await _deviceAddedSub?.cancel();
     await _deviceRemovedSub?.cancel();
     await context.toolbar.unregisterItem(cmdFlutterDevice);

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:lumide_api/lumide_api.dart';
@@ -32,6 +33,7 @@ void main() {
       projectService,
       sdkManager,
       LogService(logs.add),
+      requestTimeout: const Duration(milliseconds: 100),
     );
     addTearDown(daemon.dispose);
 
@@ -42,6 +44,17 @@ void main() {
     expect(daemon.isRunning, isTrue);
     expect(await daemon.getDevices(), isEmpty);
     expect(await _readCount(counterPath), 1);
+    expect(await daemon.getEmulators(), [
+      {'id': 'Pixel_9', 'name': 'Pixel 9', 'platformType': 'android'},
+    ]);
+    await daemon.launchEmulator('Pixel_9');
+    await expectLater(
+        daemon.launchEmulator('stalled'), throwsA(isA<TimeoutException>()));
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+    expect(await daemon.getDevices(), isEmpty);
+    expect(logs.where((line) => line.contains('parsing error')), isEmpty);
+    await expectLater(
+        daemon.launchEmulator('missing'), throwsA(isA<Exception>()));
 
     await daemon.restart();
     expect(daemon.isRunning, isTrue);
@@ -56,6 +69,7 @@ Future<File> _writeFakeDaemon(Directory directory) async {
   final script = File(path.join(directory.path, 'fake_daemon.dart'));
   await script.writeAsString(r'''
 import 'dart:convert';
+import 'dart:async';
 import 'dart:io';
 
 Future<void> main(List<String> arguments) async {
@@ -74,7 +88,21 @@ Future<void> main(List<String> arguments) async {
     final request = messages.first as Map<String, dynamic>;
     final id = request['id'];
     final method = request['method'];
-    final result = method == 'device.getDevices' ? const [] : null;
+    final result = switch (method) {
+      'device.getDevices' => const [],
+      'emulator.getEmulators' => [{'id': 'Pixel_9', 'name': 'Pixel 9', 'platformType': 'android'}],
+      _ => null,
+    };
+    if (method == 'emulator.launch' && request['params']['emulatorId'] == 'stalled') {
+      Future<void>.delayed(const Duration(milliseconds: 200), () {
+        stdout.writeln(jsonEncode([{'id': id, 'result': null}]));
+      });
+      continue;
+    }
+    if (method == 'emulator.launch' && request['params']['emulatorId'] != 'Pixel_9') {
+      stdout.writeln(jsonEncode([{'id': id, 'error': 'Unknown emulator'}]));
+      continue;
+    }
     stdout.writeln(jsonEncode([
       {'id': id, 'result': result},
     ]));

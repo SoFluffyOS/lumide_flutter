@@ -60,6 +60,30 @@ contributes:
         validation: true
         install: true
   commands:
+    - id: flutter.toggleWidgetInspector
+      title: 'Flutter: Toggle Widget Selection'
+      category: 'Flutter'
+    - id: flutter.togglePerformanceOverlay
+      title: 'Flutter: Toggle Performance Overlay'
+      category: 'Flutter'
+    - id: flutter.devtools.inspector
+      title: 'Flutter: Open Widget Inspector'
+      category: 'Flutter'
+    - id: flutter.devtools.performance
+      title: 'Flutter: Open Performance'
+      category: 'Flutter'
+    - id: flutter.devtools.cpu-profiler
+      title: 'Flutter: Open CPU Profiler'
+      category: 'Flutter'
+    - id: flutter.devtools.memory
+      title: 'Flutter: Open Memory'
+      category: 'Flutter'
+    - id: flutter.devtools.network
+      title: 'Flutter: Open Network'
+      category: 'Flutter'
+    - id: flutter.devtools.logging
+      title: 'Flutter: Open Logging'
+      category: 'Flutter'
     - id: flutter.doctor
       title: 'Flutter: Doctor'
       category: 'Flutter'
