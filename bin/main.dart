@@ -19,10 +19,12 @@ class FlutterPlugin extends LumidePlugin {
   late LaunchConfigService launchConfigService;
   late TargetService targetService;
   late RunService runService;
+  late WidgetPreviewService widgetPreviewService;
   LumideSdkSelectionChangeEvent? _pendingSdkSelectionChange;
   Future<void>? _sdkSelectionWorker;
   bool _deactivating = false;
   bool _workspaceServicesInitialized = false;
+  int _previewMenuVersion = 0;
 
   @override
   Future<void> onActivate(LumideContext context) async {
@@ -62,6 +64,10 @@ class FlutterPlugin extends LumidePlugin {
     targetService = TargetService(context, projectService, launchConfigService);
     runService = RunService(context, projectService, sdkManager, deviceService,
         targetService, daemonService, launchConfigService);
+    widgetPreviewService =
+        WidgetPreviewService(context, projectService, sdkManager);
+    flutterService.openWidgetPreview = widgetPreviewService.open;
+    flutterService.supportsWidgetPreview = widgetPreviewService.isSupported;
     deviceService.onDidChange = runService.refreshLaunchConfigurations;
     targetService.onDidChange = runService.refreshLaunchConfigurations;
 
@@ -79,6 +85,15 @@ class FlutterPlugin extends LumidePlugin {
       targetService.init(),
     ]);
     launchConfigService.onDidChange = runService.refreshLaunchConfigurations;
+
+    final scanOnStartup = await context.workspace
+            .getConfiguration(confScanDevicesOnStartup) as bool? ??
+        defaultScanDevicesOnStartup;
+    if (scanOnStartup) {
+      unawaited(deviceService.refreshDevices().catchError((Object error) {
+        logService.warn('Initial Flutter device scan failed: $error');
+      }));
+    }
 
     // 3. Environment Check (asynchronous in background)
     unawaited(flutterService.checkSdk().then((hasSdk) async {
@@ -190,9 +205,11 @@ class FlutterPlugin extends LumidePlugin {
         );
       }
       sdkManager.clearCache();
+      await widgetPreviewService.stop();
       final daemonWasRunning = daemonService.isRunning;
       if (daemonWasRunning) await daemonService.restart();
       await flutterService.checkSdk();
+      await _updateWidgetPreviewMenu(context);
       if (daemonWasRunning) await deviceService.refreshDevices();
       await runService.refreshLaunchConfigurations();
       logService.info('Flutter services refreshed for the selected SDK.');
@@ -207,6 +224,21 @@ class FlutterPlugin extends LumidePlugin {
 
   Future<void> _registerCommands(LumideContext context) async {
     await Future.wait([
+      context.commands.registerCommand(
+        id: 'flutter.runFile',
+        title: 'Flutter: Launch File',
+        callback: ([args]) => runService.runFile(args),
+      ),
+      context.commands.registerCommand(
+        id: 'flutter.showWidgetPreview',
+        title: 'Flutter: Open Widget Preview',
+        callback: ([args]) => widgetPreviewService.open(),
+      ),
+      context.commands.registerCommand(
+        id: 'flutter.stopWidgetPreview',
+        title: 'Flutter: Stop Widget Preview',
+        callback: ([args]) => widgetPreviewService.stop(),
+      ),
       context.commands.registerCommand(
         id: cmdFlutterDoctor,
         title: 'Flutter: Doctor',
@@ -389,14 +421,38 @@ class FlutterPlugin extends LumidePlugin {
         ),
       ),
     ]);
+    unawaited(_updateWidgetPreviewMenu(context).catchError((Object error) {
+      logService.warn('Could not update Widget Preview menu: $error');
+    }));
+  }
+
+  Future<void> _updateWidgetPreviewMenu(LumideContext context) async {
+    final version = ++_previewMenuVersion;
+    final supported = await widgetPreviewService.isSupported();
+    if (_deactivating || version != _previewMenuVersion) return;
+    if (!supported) {
+      await context.menus.unregisterAction('flutter.widgetPreview.addPane');
+      return;
+    }
+    await context.menus.registerAction(
+      const LumideMenuAction(
+        id: 'flutter.widgetPreview.addPane',
+        title: 'Flutter Widget Preview',
+        command: 'flutter.showWidgetPreview',
+        location: LumideMenuLocation.addPane,
+        priority: 90,
+      ),
+    );
   }
 
   @override
   Future<void> onDeactivate() async {
     _deactivating = true;
+    _previewMenuVersion++;
     _pendingSdkSelectionChange = null;
     await _sdkSelectionWorker;
     if (!_workspaceServicesInitialized) return;
+    await _disposeSafely('widget preview', widgetPreviewService.dispose);
     await _disposeSafely('run service', runService.dispose);
     await _disposeSafely('device service', deviceService.dispose);
     await _disposeSafely('target service', targetService.dispose);

@@ -1,12 +1,17 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:lumide_api/lumide_api.dart';
 import 'package:path/path.dart' as path;
 
 class SdkManager {
-  SdkManager(this.context);
+  SdkManager(this.context,
+      {this.versionCheckTimeout = const Duration(seconds: 20)});
 
   final LumideContext context;
+  final Duration versionCheckTimeout;
+  final Map<String, Future<bool>> _widgetPreviewSupport = {};
 
   Future<String?> _workspaceRoot() async {
     try {
@@ -135,7 +140,59 @@ class SdkManager {
     return null;
   }
 
-  void clearCache() {}
+  Future<bool> supportsWidgetPreview(String projectRoot) async {
+    final command = await getFlutterCommand(projectRoot);
+    final key = '$projectRoot\u0000${command.join('\u0000')}';
+    final cached = _widgetPreviewSupport[key];
+    if (cached != null) return cached;
+    final check = _checkWidgetPreviewSupport(command, projectRoot);
+    _widgetPreviewSupport[key] = check;
+    return check;
+  }
+
+  Future<bool> _checkWidgetPreviewSupport(
+      List<String> command, String projectRoot) async {
+    final resolvedVersion = await _resolvedVersion(command, projectRoot);
+    final version = resolvedVersion ??
+        await getSdkVersion(command, workingDir: projectRoot);
+    return _versionSupportsWidgetPreview(version);
+  }
+
+  Future<String?> _resolvedVersion(
+      List<String> command, String projectRoot) async {
+    try {
+      final resolution = await context.sdks.resolve(LumideSdkResolveRequest(
+        kind: LumideSdkKind.flutter,
+        providerId: 'flutter',
+        workspacePath: projectRoot,
+        executable: 'flutter',
+      ));
+      if (resolution == null) return null;
+      final selectedCommand = [resolution.executable, ...resolution.arguments];
+      if (selectedCommand.join('\u0000') != command.join('\u0000')) return null;
+      final version = resolution.installation.version;
+      return _parseFlutterVersion(version) == null ? null : version;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  bool _versionSupportsWidgetPreview(String version) {
+    final parsed = _parseFlutterVersion(version);
+    if (parsed == null) return false;
+    final (major, minor) = parsed;
+    return major > 3 || (major == 3 && minor >= 47);
+  }
+
+  (int, int)? _parseFlutterVersion(String version) {
+    final parts = RegExp(r'^(\d+)\.(\d+)(?:\.|$)').firstMatch(version);
+    final major = int.tryParse(parts?.group(1) ?? '');
+    final minor = int.tryParse(parts?.group(2) ?? '');
+    if (major == null || minor == null) return null;
+    return (major, minor);
+  }
+
+  void clearCache() => _widgetPreviewSupport.clear();
 
   Future<ProcessResult> runFlutter(
     String projectRoot,
@@ -168,17 +225,44 @@ class SdkManager {
     List<String> command, {
     String? workingDir,
   }) async {
+    Process? process;
+    StreamSubscription<String>? stdoutSubscription;
+    StreamSubscription<List<int>>? stderrSubscription;
     try {
-      final result = await Process.run(
+      process = await Process.start(
         command.first,
         [...command.skip(1), '--version'],
         workingDirectory: workingDir,
-      ).timeout(const Duration(seconds: 20));
-      if (result.exitCode != 0) return 'Unknown';
-      final words = result.stdout.toString().split(RegExp(r'\s+'));
+        runInShell: Platform.isWindows,
+      );
+      final output = StringBuffer();
+      stdoutSubscription =
+          process.stdout.transform(utf8.decoder).listen((chunk) {
+        if (output.length < 4096) {
+          output.write(chunk.substring(
+              0, (4096 - output.length).clamp(0, chunk.length)));
+        }
+      });
+      stderrSubscription = process.stderr.listen((_) {});
+      final stdoutDone = stdoutSubscription.asFuture<void>();
+      final stderrDone = stderrSubscription.asFuture<void>();
+      final exitCode = await process.exitCode.timeout(versionCheckTimeout);
+      await Future.wait([stdoutDone, stderrDone]).timeout(versionCheckTimeout);
+      if (exitCode != 0) return 'Unknown';
+      final words = output.toString().split(RegExp(r'\s+'));
       if (words.length > 1 && words.first == 'Flutter') return words[1];
+    } on TimeoutException {
+      process?.kill();
+      try {
+        await process?.exitCode.timeout(const Duration(seconds: 2));
+      } on TimeoutException {
+        process?.kill(ProcessSignal.sigkill);
+      }
     } catch (_) {
       return 'Unknown';
+    } finally {
+      await stdoutSubscription?.cancel();
+      await stderrSubscription?.cancel();
     }
     return 'Unknown';
   }

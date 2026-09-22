@@ -9,11 +9,15 @@ class DevToolsPanelService {
     this.window,
     this.onError, {
     this.cleanupTimeout = const Duration(seconds: 2),
+    this.baseViewType = 'flutter.devtools',
+    this.baseTitle = 'Flutter DevTools',
   });
 
   final LumideWindow window;
   final void Function(String, Object) onError;
   final Duration cleanupTimeout;
+  final String baseViewType;
+  final String baseTitle;
   final _panels = <DevToolsPage?, LumideWebviewPanel>{};
   final _opening = <DevToolsPage?, Future<void>>{};
   final _retired = <LumideWebviewPanel>{};
@@ -47,11 +51,11 @@ class DevToolsPanelService {
     if (generation != _generation) return;
     final panel = await window.createWebviewPanel(
       switch (page) {
-        null => 'flutter.devtools',
+        null => baseViewType,
         _ => 'flutter.devtools.${page.id}'
       },
       switch (page) {
-        null => 'Flutter DevTools',
+        null => baseTitle,
         _ => 'Flutter ${page.title}'
       },
       options: {'url': page?.url(url) ?? url},

@@ -22,6 +22,11 @@ permissions:
       - open
 
 configuration:
+  - key: flutter.scanDevicesOnStartup
+    type: boolean
+    default: true
+    title: 'Scan Devices on Startup'
+    description: 'Discover connected Flutter devices when the plugin starts.'
   - key: flutter.hotReloadOnSave
     type: boolean
     default: true
@@ -60,6 +65,12 @@ contributes:
         validation: true
         install: true
   commands:
+    - id: flutter.showWidgetPreview
+      title: 'Flutter: Open Widget Preview'
+      category: 'Flutter'
+    - id: flutter.stopWidgetPreview
+      title: 'Flutter: Stop Widget Preview'
+      category: 'Flutter'
     - id: flutter.toggleWidgetInspector
       title: 'Flutter: Toggle Widget Selection'
       category: 'Flutter'

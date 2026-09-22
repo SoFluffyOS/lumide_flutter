@@ -10,7 +10,8 @@ void main() {
     final context = _Context();
     final daemon = _Daemon(context);
     final devices = DeviceService(context, StatusBarService(context), daemon);
-    context.window.choose = 'emulator:Pixel_9';
+    context.window.choose = 'show-emulators';
+    context.window.emulatorChoice = 'emulator:Pixel_9';
     await devices.selectDevice();
     expect(context.window.items.map((item) => item.payload),
         contains('emulator:Pixel_9'));
@@ -27,7 +28,7 @@ void main() {
     final context = _Context();
     final daemon = _Daemon(context)..failDiscovery = true;
     final devices = DeviceService(context, StatusBarService(context), daemon);
-    context.window.choose = 'emulator-5554';
+    context.window.choose = 'show-emulators';
     await devices.selectDevice();
     expect(devices.selectedDeviceId, 'emulator-5554');
     expect(context.window.messages, contains(contains('Could not list')));
@@ -90,8 +91,40 @@ void main() {
     context.window.choose = 'emulator-5554';
     await devices.selectDevice();
     expect(devices.selectedDeviceId, 'emulator-5554');
-    expect(context.window.messages, contains(contains('Could not list')));
+    expect(context.window.items.map((item) => item.payload),
+        contains('show-emulators'));
+    expect(
+        context.window.messages, isNot(contains(contains('Could not list'))));
     daemon.pendingDiscovery?.complete();
+  });
+
+  test('connected devices appear without waiting for AVD discovery', () async {
+    final context = _Context();
+    final daemon = _Daemon(context)..pendingDiscovery = Completer<void>();
+    final devices = DeviceService(context, StatusBarService(context), daemon);
+    context.window.choose = 'emulator-5554';
+    await devices.selectDevice();
+    expect(devices.selectedDeviceId, 'emulator-5554');
+    expect(daemon.emulatorRequests, 1);
+    daemon.pendingDiscovery?.complete();
+  });
+
+  test('background AVD results appear on the next picker opening', () async {
+    final context = _Context();
+    final daemon = _Daemon(context)..pendingDiscovery = Completer<void>();
+    final devices = DeviceService(context, StatusBarService(context), daemon);
+    context.window.choose = 'emulator-5554';
+    await devices.selectDevice();
+    daemon.pendingDiscovery?.complete();
+    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(Duration.zero);
+
+    context.window.choose = 'emulator:Pixel_9';
+    await devices.selectDevice();
+    expect(context.window.items.map((item) => item.payload),
+        contains('emulator:Pixel_9'));
+    expect(daemon.emulatorRequests, 1);
+    expect(devices.selectedDeviceId, 'emulator-5556');
   });
 
   test('dispose cancels launch waiting without later notifications', () async {
@@ -132,6 +165,7 @@ class _Daemon extends DaemonService {
   Completer<void>? pendingRefresh;
   Completer<void>? pendingDiscovery;
   int deviceRequests = 0;
+  int emulatorRequests = 0;
   @override
   Future<void> enableDevicePolling() async {}
   @override
@@ -151,6 +185,7 @@ class _Daemon extends DaemonService {
 
   @override
   Future<List<Map<String, dynamic>>> getEmulators() async {
+    emulatorRequests++;
     await pendingDiscovery?.future;
     if (failDiscovery) throw StateError('SDK unavailable');
     return [
@@ -181,6 +216,7 @@ class _Window implements LumideWindow {
   List<QuickPickItem> items = [];
   final messages = <String>[];
   String? choose;
+  String? emulatorChoice;
   @override
   Future<void> showMessage(String message,
       {MessageType type = MessageType.info, String? title}) async {
@@ -196,7 +232,10 @@ class _Window implements LumideWindow {
     Map<String, int>? position,
   }) async {
     this.items = items;
-    return items.where((item) => item.payload == choose).firstOrNull;
+    final choice = placeholder == 'Select an Android Virtual Device'
+        ? emulatorChoice
+        : choose;
+    return items.where((item) => item.payload == choice).firstOrNull;
   }
 
   @override

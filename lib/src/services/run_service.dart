@@ -70,6 +70,8 @@ class RunService {
   StreamSubscription<String>? _stdoutSub;
   StreamSubscription<String>? _stderrSub;
   bool _isRunning = false;
+  bool _isLaunching = false;
+  bool _openPerformanceOnConnect = false;
   bool get isRunning => _isRunning;
 
   bool get _isDebugMode =>
@@ -742,11 +744,46 @@ class RunService {
     );
   }
 
+  /// Launch the CodeLens resource, independently of the selected launch entry.
+  Future<void> runFile(Map<String, dynamic>? arguments) async {
+    final uri = Uri.tryParse(arguments?['uri']?.toString() ?? '');
+    final mode = arguments?['mode'];
+    if (uri == null ||
+        uri.scheme != 'file' ||
+        !uri.path.endsWith('.dart') ||
+        !const ['run', 'debug', 'profile'].contains(mode)) {
+      return;
+    }
+    final target = uri.toFilePath();
+    if (!await context.fs.exists(target)) return;
+    if (deviceService.selectedDeviceId == null) {
+      await deviceService.selectDevice();
+      if (deviceService.selectedDeviceId == null) return;
+    }
+    await _launch(
+      switch (mode) {
+        'debug' => _FlutterLaunchMode.debug,
+        _ => _FlutterLaunchMode.run
+      },
+      useSelectedConfiguration: false,
+      configuration: LumideLaunchConfiguration(
+        id: 'file:$target',
+        label: path.basename(target),
+        arguments: {
+          'target': target,
+          'buildMode': switch (mode) { 'profile' => 'profile', _ => 'debug' },
+          'toolArgs': <String>[],
+        },
+      ),
+    );
+  }
+
   Future<void> _launch(
     _FlutterLaunchMode mode, {
     LumideLaunchConfiguration? configuration,
+    bool useSelectedConfiguration = true,
   }) async {
-    if (_isRunning) {
+    if (_isRunning || _isLaunching) {
       await context.window.showMessage(
         'A Flutter app is already running. Stop it before starting a new one.',
         type: MessageType.warning,
@@ -754,10 +791,16 @@ class RunService {
       return;
     }
 
+    _isLaunching = true;
     String root;
     try {
-      root = await projectService.getProjectRoot();
+      root = await projectService
+          .getProjectRoot(switch (useSelectedConfiguration) {
+        true => null,
+        false => _stringArgument(configuration, 'target'),
+      });
     } catch (e) {
+      _isLaunching = false;
       await context.window.showMessage(
         e.toString().replaceFirst('Exception: ', ''),
         type: MessageType.error,
@@ -767,8 +810,13 @@ class RunService {
 
     try {
       await _prepareForLaunch(mode);
+      _openPerformanceOnConnect = !useSelectedConfiguration &&
+          _stringArgument(configuration, 'buildMode') == 'profile';
 
-      final vscodeEntry = targetService.selectedVscodeEntry;
+      final vscodeEntry = switch (useSelectedConfiguration) {
+        true => targetService.selectedVscodeEntry,
+        false => null,
+      };
       final rawDeviceId = _stringArgument(configuration, 'deviceId') ??
           vscodeEntry?.deviceId ??
           deviceService.selectedDeviceId;
@@ -952,7 +1000,9 @@ class RunService {
         _FlutterLaunchMode.run => LumideLaunchKind.run,
       };
       final activeConfig = await _currentLaunchConfiguration();
-      _activeLaunchConfigurationId = configuration?.id ?? activeConfig.id;
+      _activeLaunchConfigurationId = useSelectedConfiguration
+          ? configuration?.id ?? activeConfig.id
+          : activeConfig.id;
       await context.launch.didStart(
         LumideLaunchEvent(
           providerId: launchProviderFlutter,
@@ -996,6 +1046,8 @@ class RunService {
         _resetDebugRuntime();
       }
       await _showRunControls(isRunning: false);
+    } finally {
+      _isLaunching = false;
     }
   }
 
@@ -1602,6 +1654,10 @@ class RunService {
         await _refreshActiveIsolate();
 
         await _logInfo('Connected to VM Service. Logs streaming...');
+        if (_openPerformanceOnConnect && generation == _vmGeneration) {
+          _openPerformanceOnConnect = false;
+          unawaited(openDevToolsInWebview(page: DevToolsPage.performance));
+        }
       }
     } catch (e) {
       await _logError('Failed to connect to VM Service', e);

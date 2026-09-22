@@ -6,6 +6,8 @@ import 'package:lumide_flutter/src/services/services.dart';
 import 'package:path/path.dart' as path;
 
 class FlutterService {
+  Future<void> Function()? openWidgetPreview;
+  Future<bool> Function()? supportsWidgetPreview;
   final LumideContext context;
   final ProjectService projectService;
   final SdkManager sdkManager;
@@ -467,6 +469,17 @@ class FlutterService {
 
   Future<void> showToolsMenu([Map<String, dynamic>? args]) async {
     final items = <QuickPickItem>[];
+    if (await supportsWidgetPreview?.call() ?? false) {
+      items.addAll(const [
+        QuickPickItem(
+          label: 'Widget Preview',
+          detail: 'Preview @Preview widgets in a pane',
+          payload: 'widget-preview',
+          icon: iconLayout,
+        ),
+        QuickPickItem(label: '', isSeparator: true),
+      ]);
+    }
 
     items.add(
       const QuickPickItem(
@@ -583,6 +596,9 @@ class FlutterService {
         }
       }
       switch (payload) {
+        case 'widget-preview':
+          await openWidgetPreview?.call();
+          return;
         case cmdFlutterToggleInspector:
           await runService.toggleWidgetInspector();
           return;

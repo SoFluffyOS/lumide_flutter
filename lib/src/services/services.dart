@@ -13,3 +13,5 @@ export 'sdk_manager.dart';
 export 'status_bar_service.dart';
 export 'target_service.dart';
 export 'widget_inspector_service.dart';
+export 'widget_preview_server.dart';
+export 'widget_preview_service.dart';

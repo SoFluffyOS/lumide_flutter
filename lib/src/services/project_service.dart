@@ -94,6 +94,36 @@ class ProjectService {
         'Workspace root containing a pubspec.yaml is required to use the Flutter plugin.');
   }
 
+  /// Widget Preview must start at the Pub workspace root to discover previews
+  /// across workspace packages.
+  Future<String> getWidgetPreviewRoot([String? uri]) async {
+    final projectRoot = await getProjectRoot(uri);
+    final pubspec = await context.fs.readString(
+      path.join(projectRoot, 'pubspec.yaml'),
+    );
+    if (!RegExp(r'^resolution\s*:\s*workspace\s*$', multiLine: true)
+        .hasMatch(pubspec)) {
+      return projectRoot;
+    }
+
+    final workspaceRoot = await context.workspace.getRootUri();
+    var current = path.dirname(projectRoot);
+    while (current != path.dirname(current)) {
+      final candidate = path.join(current, 'pubspec.yaml');
+      if (await context.fs.exists(candidate)) {
+        final content = await context.fs.readString(candidate);
+        if (RegExp(r'^workspace\s*:', multiLine: true).hasMatch(content)) {
+          return current;
+        }
+      }
+      if (workspaceRoot != null && path.equals(current, workspaceRoot)) {
+        break;
+      }
+      current = path.dirname(current);
+    }
+    return projectRoot;
+  }
+
   Future<String?> findProjectRootForPath(String fileOrFolderPath) async {
     var current = fileOrFolderPath;
     final extension = path.extension(current);

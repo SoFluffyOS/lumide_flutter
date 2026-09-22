@@ -12,7 +12,9 @@ class DeviceService {
   final DaemonService daemonService;
 
   List<Map<String, dynamic>> _devices = [];
-  List<Map<String, dynamic>> _emulators = [];
+  List<Map<String, dynamic>>? _emulators;
+  Future<List<Map<String, dynamic>>>? _emulatorDiscovery;
+  Object? _emulatorDiscoveryError;
   String? _selectedDeviceId;
   bool _launchingEmulator = false;
   bool _disposed = false;
@@ -130,18 +132,7 @@ class DeviceService {
   Future<void> _selectDevice(Map<String, int>? position) async {
     if (!_isInitialized) await refreshDevices();
     if (_disposed) return;
-    try {
-      _emulators = await daemonService.getEmulators().timeout(discoveryTimeout);
-    } catch (error) {
-      if (_disposed) return;
-      _emulators = [];
-      daemonService.logService.error('Failed to list Android emulators', error);
-      await context.window.showMessage(
-        'Could not list Android emulators. Check the Android SDK and try again.',
-        type: MessageType.warning,
-      );
-    }
-    if (_disposed) return;
+    unawaited(_discoverEmulators());
     final devices = List<Map<String, dynamic>>.from(_devices)
       ..sort((a, b) => _deviceSortRank(a).compareTo(_deviceSortRank(b)));
 
@@ -166,18 +157,18 @@ class DeviceService {
       );
     }).toList();
 
-    final emulators = _emulators
-        .where((emulator) =>
-            emulator['id'] is String && emulator['id'] != 'apple_ios_simulator')
-        .where((emulator) => !devices.any(
-              (device) => device['emulatorId'] == emulator['id'],
-            ))
-        .toList(growable: false);
-    if (devices.isNotEmpty && emulators.isNotEmpty) {
+    if (items.isNotEmpty) {
       items.add(const QuickPickItem(label: '', isSeparator: true));
     }
+
+    final emulators = _emulators ?? const <Map<String, dynamic>>[];
     for (final emulator in emulators) {
-      final id = emulator['id'] as String;
+      final id = emulator['id'];
+      if (id is! String ||
+          id == 'apple_ios_simulator' ||
+          devices.any((device) => device['emulatorId'] == id)) {
+        continue;
+      }
       items.add(QuickPickItem(
         label: emulator['name']?.toString() ?? id,
         description: 'Android Virtual Device',
@@ -186,9 +177,13 @@ class DeviceService {
         icon: iconSmartphone,
       ));
     }
-    if (items.isNotEmpty) {
-      items.add(const QuickPickItem(label: '', isSeparator: true));
-    }
+
+    items.add(const QuickPickItem(
+      label: 'Android Virtual Devices...',
+      detail: 'Show stopped Android emulators',
+      payload: 'show-emulators',
+      icon: iconSmartphone,
+    ));
 
     if (_isMacOS && !hasIosSimulatorDevice) {
       items.add(const QuickPickItem(
@@ -223,8 +218,14 @@ class DeviceService {
         await launchEmulator(payload.substring('emulator:'.length));
         return;
       }
+      if (payload == 'show-emulators') {
+        await _selectEmulator(position);
+        return;
+      }
       if (payload == 'refresh') {
         await context.window.showMessage('Scanning for connected devices');
+        _emulators = null;
+        _emulatorDiscoveryError = null;
         await refreshDevices();
         await _selectDevice(position); // Re-open the same picker operation
       } else if (payload == 'start-ios-simulator') {
@@ -235,6 +236,79 @@ class DeviceService {
         _selectedDeviceId = payload;
         await _notifyChanged();
       }
+    }
+  }
+
+  Future<void> _selectEmulator(Map<String, int>? position) async {
+    final emulators = await _discoverEmulators();
+    if (_disposed) return;
+    if (_emulatorDiscoveryError != null) {
+      await context.window.showMessage(
+        'Could not list Android emulators. Check the Android SDK and try again.',
+        type: MessageType.warning,
+      );
+      return;
+    }
+    final items = emulators
+        .where((emulator) =>
+            emulator['id'] is String && emulator['id'] != 'apple_ios_simulator')
+        .where((emulator) => !_devices.any(
+              (device) => device['emulatorId'] == emulator['id'],
+            ))
+        .map((emulator) {
+      final id = emulator['id'] as String;
+      return QuickPickItem(
+        label: emulator['name']?.toString() ?? id,
+        description: 'Android Virtual Device',
+        detail: 'Launch $id',
+        payload: 'emulator:$id',
+        icon: iconSmartphone,
+      );
+    }).toList();
+    if (items.isEmpty) {
+      await context.window
+          .showMessage('No stopped Android Virtual Devices found.');
+      return;
+    }
+    final selected = await context.window.showQuickPick(
+      items,
+      placeholder: 'Select an Android Virtual Device',
+      position: position,
+    );
+    if (_disposed) return;
+    final payload = selected?.payload;
+    if (payload is String && payload.startsWith('emulator:')) {
+      await launchEmulator(payload.substring('emulator:'.length));
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _discoverEmulators() {
+    if (_disposed) return Future.value(const []);
+    final cached = _emulators;
+    if (cached != null) return Future.value(cached);
+    final pending = _emulatorDiscovery;
+    if (pending != null) return pending;
+    final discovery = _loadEmulators();
+    _emulatorDiscovery = discovery;
+    return discovery.whenComplete(() {
+      if (identical(_emulatorDiscovery, discovery)) _emulatorDiscovery = null;
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> _loadEmulators() async {
+    try {
+      final result =
+          await daemonService.getEmulators().timeout(discoveryTimeout);
+      if (_disposed) return const [];
+      _emulatorDiscoveryError = null;
+      _emulators = result;
+      return result;
+    } catch (error) {
+      if (_disposed) return const [];
+      _emulatorDiscoveryError = error;
+      daemonService.logService.error('Failed to list Android emulators', error);
+      _emulators = const [];
+      return const [];
     }
   }
 
