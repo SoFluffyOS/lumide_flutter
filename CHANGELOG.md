@@ -1,3 +1,15 @@
+## 1.14.0 (2026-09-22)
+
+### 🚀 New Features
+- Support Flutter Widget Previewer in a dedicated pane.
+- Support `Run | Debug | Profile` code lenses above `main` function (*).
+- Add a `flutter.scanDevicesOnStartup` setting to control startup device scanning.
+
+### ✨ Enhancements
+- Show connected Flutter devices without waiting for Android emulator discovery.
+
+> (*) Note: Code Lenses require  Lumide 0.22.0 and later.
+
 ## 1.13.0 (2026-09-22)
 
 ### 🚀 New Features
