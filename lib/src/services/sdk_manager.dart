@@ -67,9 +67,8 @@ class SdkManager {
 
         return [res.executable, ...res.arguments];
       }
-      throw StateError('No Flutter SDK is available for $projectRoot');
-    } on UnsupportedError {
-      // Older hosts do not expose the SDK API. Continue with legacy discovery.
+    } catch (_) {
+      // Host resolution failed or threw. Fall back to legacy discovery.
     }
     return _legacyFlutterCommand(projectRoot);
   }
@@ -211,7 +210,7 @@ class SdkManager {
         arguments,
         workingDirectory: workingDirectory ?? projectRoot,
       );
-    } on UnsupportedError {
+    } catch (_) {
       final command = await _legacyFlutterCommand(projectRoot);
       return context.shell.run(
         command.first,

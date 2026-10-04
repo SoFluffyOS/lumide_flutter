@@ -88,6 +88,20 @@ class ProjectService {
           .exists(path.join(workspaceRootUri, 'pubspec.yaml'))) {
         return workspaceRootUri;
       }
+      final projects = await findAllProjects();
+      for (final project in projects) {
+        final pubspec = path.join(project, 'pubspec.yaml');
+        try {
+          final content = await context.fs.readString(pubspec);
+          if (content.contains('sdk: flutter') ||
+              content.contains('flutter:')) {
+            return project;
+          }
+        } catch (_) {}
+      }
+      if (projects.isNotEmpty) {
+        return projects.first;
+      }
     }
 
     throw Exception(

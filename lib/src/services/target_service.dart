@@ -86,6 +86,12 @@ class TargetService {
         if (await context.fs.exists(defaultTarget)) {
           _selectedTarget = defaultTarget;
         }
+        if (_selectedTarget == null) {
+          final targets = await projectService.findAllTargets();
+          if (targets.isNotEmpty) {
+            _selectedTarget = targets.first;
+          }
+        }
       }
     } catch (_) {
       // Ignore if no project root is found initially

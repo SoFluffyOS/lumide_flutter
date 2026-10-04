@@ -45,9 +45,6 @@ class FlutterReleaseCatalogService {
         platform: _platform,
         architecture: _hostArchitecture,
       );
-      if (releases.isEmpty) {
-        throw const FormatException('Flutter release manifest is empty');
-      }
       await context.fs.writeString(cachePath, response.body);
       return releases;
     } catch (error) {
@@ -58,7 +55,6 @@ class FlutterReleaseCatalogService {
         platform: _platform,
         architecture: _hostArchitecture,
       );
-      if (releases.isEmpty) rethrow;
       return releases.map((release) => release.copyWith(stale: true)).toList();
     }
   }
