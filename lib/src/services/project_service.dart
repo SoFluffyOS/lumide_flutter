@@ -84,10 +84,13 @@ class ProjectService {
 
     final workspaceRootUri = await context.workspace.getRootUri();
     if (workspaceRootUri != null) {
-      if (await context.fs
-          .exists(path.join(workspaceRootUri, 'pubspec.yaml'))) {
-        return workspaceRootUri;
-      }
+      final normalizedWorkspace = path.normalize(workspaceRootUri);
+      try {
+        if (await context.fs
+            .exists(path.join(normalizedWorkspace, 'pubspec.yaml'))) {
+          return normalizedWorkspace;
+        }
+      } catch (_) {}
       final projects = await findAllProjects();
       for (final project in projects) {
         final pubspec = path.join(project, 'pubspec.yaml');

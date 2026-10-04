@@ -81,10 +81,15 @@ class TargetService {
       await _loadCache();
 
       if (_selectedTarget == null) {
-        final root = await projectService.getProjectRoot();
-        final defaultTarget = path.join(root, 'lib', 'main.dart');
-        if (await context.fs.exists(defaultTarget)) {
-          _selectedTarget = defaultTarget;
+        String? root;
+        try {
+          root = await projectService.getProjectRoot();
+        } catch (_) {}
+        if (root != null) {
+          final defaultTarget = path.join(root, 'lib', 'main.dart');
+          if (await context.fs.exists(defaultTarget)) {
+            _selectedTarget = defaultTarget;
+          }
         }
         if (_selectedTarget == null) {
           final targets = await projectService.findAllTargets();
@@ -124,7 +129,11 @@ class TargetService {
 
       try {
         root = await projectService.getProjectRoot();
-      } catch (_) {}
+      } catch (_) {
+        try {
+          root = await projectService.getWorkspaceRoot();
+        } catch (_) {}
+      }
 
       final vscodeEntries = launchConfigService.entries;
       if (vscodeEntries.isNotEmpty) {
@@ -144,21 +153,24 @@ class TargetService {
         }
       }
 
-      if (root != null) {
-        final mainDartFiles =
-            await projectService.findAllTargets(forceRefresh: refresh);
+      final mainDartFiles =
+          await projectService.findAllTargets(forceRefresh: refresh);
 
-        if (mainDartFiles.isNotEmpty) {
-          if (vscodeEntries.isNotEmpty) {
-            items.add(const QuickPickItem(
-              label: 'Dart Entry Points',
-              isSeparator: true,
-            ));
-          }
+      if (mainDartFiles.isNotEmpty) {
+        if (vscodeEntries.isNotEmpty) {
+          items.add(const QuickPickItem(
+            label: 'Dart Entry Points',
+            isSeparator: true,
+          ));
+        }
 
-          for (final absolutePath in mainDartFiles) {
-            final rel = path.relative(absolutePath, from: root);
-            final packageName = await _findPackageName(absolutePath, root);
+        for (final absolutePath in mainDartFiles) {
+          final rel = root != null && root.isNotEmpty
+              ? path.relative(absolutePath, from: root)
+              : path.basename(absolutePath);
+          final packageName = root != null && root.isNotEmpty
+              ? await _findPackageName(absolutePath, root)
+              : path.basename(path.dirname(path.dirname(absolutePath)));
             final targetIcon = await getTargetIcon(absolutePath);
 
             items.add(QuickPickItem(
@@ -175,8 +187,12 @@ class TargetService {
 
         if (_selectedTarget != null &&
             !items.any((i) => i.payload == _selectedTarget)) {
-          final rel = path.relative(_selectedTarget!, from: root);
-          final packageName = await _findPackageName(_selectedTarget!, root);
+          final rel = root != null && root.isNotEmpty
+              ? path.relative(_selectedTarget!, from: root)
+              : path.basename(_selectedTarget!);
+          final packageName = root != null && root.isNotEmpty
+              ? await _findPackageName(_selectedTarget!, root)
+              : path.basename(path.dirname(path.dirname(_selectedTarget!)));
           final targetIcon = await getTargetIcon(_selectedTarget!);
 
           items.add(QuickPickItem(
@@ -189,7 +205,6 @@ class TargetService {
             noTint: targetIcon.noTint,
           ));
         }
-      }
 
       if (items.isNotEmpty) {
         items.add(const QuickPickItem(label: '', isSeparator: true));
