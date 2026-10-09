@@ -1501,6 +1501,12 @@ class RunService {
         }
         return;
 
+      case 'app.webLaunchUrl':
+        if (params['url'] case final String url) {
+          unawaited(_handleWebLaunchUrl(url, launched: params['launched']));
+        }
+        return;
+
       case 'app.started':
         unawaited(_logInfo('App is running.'));
         return;
@@ -1555,6 +1561,14 @@ class RunService {
       case null:
         return;
     }
+  }
+
+  /// `web-server` devices report `launched: false`; open those in the
+  /// browser like Chrome devices do on their own.
+  Future<void> _handleWebLaunchUrl(String url, {Object? launched}) async {
+    await _logInfo('Web app available at: $url');
+    if (launched == true) return;
+    await context.window.openUrl(url);
   }
 
   Future<MachineResult> _sendMachineCommand(

@@ -3,6 +3,7 @@
 ### ✨ Enhancements
 
 - Fewer pop-up notifications: device connect/disconnect, scans, and DevTools URLs now go to the logs instead.
+- Open the browser automatically for `web-server` runs, and log the web app URL.
 
 ### 🐞 Bug Fixes
 
