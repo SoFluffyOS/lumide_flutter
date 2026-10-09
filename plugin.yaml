@@ -128,11 +128,17 @@ contributes:
     - id: flutter.selectDevice
       title: 'Flutter: Select Device'
       category: 'Flutter'
+    - id: flutter.selectTarget
+      title: 'Flutter: Select Target'
+      category: 'Flutter'
     - id: flutter.setFlavor
       title: 'Flutter: Set Flavor'
       category: 'Flutter'
+    - id: flutter.setBuildMode
+      title: 'Flutter: Set Build Mode'
+      category: 'Flutter'
     - id: flutter.openDevTools
-      title: 'Flutter: Open DevTools'
+      title: 'Flutter: Open DevTools (Browser)'
       category: 'Flutter'
     - id: flutter.tools
       title: 'Flutter: Tools Menu'

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:lumide_api/lumide_api.dart';
 import 'package:lumide_flutter/lumide_flutter.dart';
+import 'package:lumide_flutter/src/commands.dart';
 import 'package:lumide_flutter/src/constants.dart';
 import 'package:path/path.dart' as path;
 
@@ -225,144 +226,144 @@ class FlutterPlugin extends LumidePlugin {
   Future<void> _registerCommands(LumideContext context) async {
     await Future.wait([
       context.commands.registerCommand(
-        id: 'flutter.runFile',
-        title: 'Flutter: Launch File',
+        id: cmdFlutterRunFile,
+        title: flutterCommandTitle(cmdFlutterRunFile),
         callback: ([args]) => runService.runFile(args),
       ),
       context.commands.registerCommand(
-        id: 'flutter.showWidgetPreview',
-        title: 'Flutter: Open Widget Preview',
+        id: cmdFlutterShowWidgetPreview,
+        title: flutterCommandTitle(cmdFlutterShowWidgetPreview),
         callback: ([args]) => widgetPreviewService.open(),
       ),
       context.commands.registerCommand(
-        id: 'flutter.stopWidgetPreview',
-        title: 'Flutter: Stop Widget Preview',
+        id: cmdFlutterStopWidgetPreview,
+        title: flutterCommandTitle(cmdFlutterStopWidgetPreview),
         callback: ([args]) => widgetPreviewService.stop(),
       ),
       context.commands.registerCommand(
         id: cmdFlutterDoctor,
-        title: 'Flutter: Doctor',
+        title: flutterCommandTitle(cmdFlutterDoctor),
         callback: ([args]) => flutterService.doctor(),
       ),
       context.commands.registerCommand(
         id: cmdFlutterPubGet,
-        title: 'Flutter: Pub Get',
+        title: flutterCommandTitle(cmdFlutterPubGet),
         callback: ([args]) => flutterService.pubGet(),
       ),
       context.commands.registerCommand(
         id: cmdFlutterClean,
-        title: 'Flutter: Clean',
+        title: flutterCommandTitle(cmdFlutterClean),
         callback: ([args]) => flutterService.clean(),
       ),
       context.commands.registerCommand(
         id: cmdFlutterCreate,
-        title: 'Flutter: New Project',
+        title: flutterCommandTitle(cmdFlutterCreate),
         callback: ([args]) => flutterService.create(),
       ),
       context.commands.registerCommand(
         id: cmdFlutterSelectDevice,
-        title: 'Flutter: Select Device',
+        title: flutterCommandTitle(cmdFlutterSelectDevice),
         callback: ([args]) => deviceService.selectDevice(),
       ),
       context.commands.registerCommand(
         id: cmdFlutterSelectTarget,
-        title: 'Flutter: Select Target',
+        title: flutterCommandTitle(cmdFlutterSelectTarget),
         callback: ([args]) => targetService.selectTarget(),
       ),
       context.commands.registerCommand(
         id: cmdFlutterSetFlavor,
-        title: 'Flutter: Set Flavor',
+        title: flutterCommandTitle(cmdFlutterSetFlavor),
         callback: ([args]) => runService.setFlavor(),
       ),
       context.commands.registerCommand(
         id: cmdFlutterSetBuildMode,
-        title: 'Flutter: Set Build Mode',
+        title: flutterCommandTitle(cmdFlutterSetBuildMode),
         callback: ([args]) => runService.setBuildMode(),
       ),
       context.commands.registerCommand(
         id: cmdFlutterRun,
-        title: 'Flutter: Run',
+        title: flutterCommandTitle(cmdFlutterRun),
         callback: ([args]) => runService.run(),
       ),
       context.commands.registerCommand(
         id: cmdFlutterDebug,
-        title: 'Flutter: Debug',
+        title: flutterCommandTitle(cmdFlutterDebug),
         callback: ([args]) => runService.debug(),
       ),
       context.commands.registerCommand(
         id: cmdFlutterAttach,
-        title: 'Flutter: Attach',
+        title: flutterCommandTitle(cmdFlutterAttach),
         callback: ([args]) => runService.attach(),
       ),
       context.commands.registerCommand(
         id: cmdFlutterHotReload,
-        title: 'Flutter: Hot Reload',
+        title: flutterCommandTitle(cmdFlutterHotReload),
         callback: ([args]) => runService.hotReload(),
       ),
       context.commands.registerCommand(
         id: cmdFlutterHotRestart,
-        title: 'Flutter: Hot Restart',
+        title: flutterCommandTitle(cmdFlutterHotRestart),
         callback: ([args]) => runService.hotRestart(),
       ),
       context.commands.registerCommand(
         id: cmdFlutterStop,
-        title: 'Flutter: Stop App',
+        title: flutterCommandTitle(cmdFlutterStop),
         callback: ([args]) => runService.stop(),
       ),
       context.commands.registerCommand(
         id: cmdFlutterOpenDevToolsWebview,
-        title: 'Flutter: Open DevTools',
+        title: flutterCommandTitle(cmdFlutterOpenDevToolsWebview),
         callback: ([args]) => runService.openDevToolsInWebview(),
       ),
       context.commands.registerCommand(
         id: cmdFlutterOpenDevTools,
-        title: 'Flutter: Open DevTools (Browser)',
+        title: flutterCommandTitle(cmdFlutterOpenDevTools),
         callback: ([args]) => runService.openDevTools(),
       ),
       for (final page in DevToolsPage.values)
         context.commands.registerCommand(
           id: page.command,
-          title: 'Flutter: Open ${page.title}',
+          title: flutterCommandTitle(page.command),
           callback: ([args]) => runService.openDevToolsInWebview(page: page),
         ),
       context.commands.registerCommand(
         id: cmdFlutterToggleInspector,
-        title: 'Flutter: Toggle Widget Selection',
+        title: flutterCommandTitle(cmdFlutterToggleInspector),
         callback: ([args]) => runService.toggleWidgetInspector(),
       ),
       context.commands.registerCommand(
         id: cmdFlutterTogglePerformanceOverlay,
-        title: 'Flutter: Toggle Performance Overlay',
+        title: flutterCommandTitle(cmdFlutterTogglePerformanceOverlay),
         callback: ([args]) => runService.togglePerformanceOverlay(),
       ),
       context.commands.registerCommand(
         id: cmdFlutterTools,
-        title: 'Flutter: Tools Menu',
+        title: flutterCommandTitle(cmdFlutterTools),
         callback: ([args]) => flutterService.showToolsMenu(args),
       ),
       context.commands.registerCommand(
         id: cmdFlutterPubGetForContext,
-        title: 'Flutter: Pub Get Here',
+        title: flutterCommandTitle(cmdFlutterPubGetForContext),
         callback: ([args]) => flutterService.pubGetForContext(args),
       ),
       context.commands.registerCommand(
         id: cmdFlutterCleanForContext,
-        title: 'Flutter: Clean Here',
+        title: flutterCommandTitle(cmdFlutterCleanForContext),
         callback: ([args]) => flutterService.cleanForContext(args),
       ),
       context.commands.registerCommand(
         id: cmdFlutterSetTargetForContext,
-        title: 'Flutter: Set as Target',
+        title: flutterCommandTitle(cmdFlutterSetTargetForContext),
         callback: ([args]) => targetService.setTargetFromContext(args),
       ),
       context.commands.registerCommand(
         id: cmdFlutterCreateForContext,
-        title: 'Flutter: New Project Here',
+        title: flutterCommandTitle(cmdFlutterCreateForContext),
         callback: ([args]) => flutterService.createForContext(args),
       ),
       context.commands.registerCommand(
         id: cmdFlutterNewDartFileForContext,
-        title: 'Flutter: New Dart File',
+        title: flutterCommandTitle(cmdFlutterNewDartFileForContext),
         callback: ([args]) => flutterService.newDartFileForContext(args),
       ),
     ]);
@@ -438,7 +439,7 @@ class FlutterPlugin extends LumidePlugin {
       const LumideMenuAction(
         id: 'flutter.widgetPreview.addPane',
         title: 'Flutter Widget Preview',
-        command: 'flutter.showWidgetPreview',
+        command: cmdFlutterShowWidgetPreview,
         location: LumideMenuLocation.addPane,
         priority: 90,
       ),

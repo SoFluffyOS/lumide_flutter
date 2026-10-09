@@ -86,3 +86,7 @@ const String folderAssets = 'assets';
 const String cmdFlutterToggleInspector = 'flutter.toggleWidgetInspector';
 const String cmdFlutterTogglePerformanceOverlay =
     'flutter.togglePerformanceOverlay';
+
+const String cmdFlutterRunFile = 'flutter.runFile';
+const String cmdFlutterShowWidgetPreview = 'flutter.showWidgetPreview';
+const String cmdFlutterStopWidgetPreview = 'flutter.stopWidgetPreview';
