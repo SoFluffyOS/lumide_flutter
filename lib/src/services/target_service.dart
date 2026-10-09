@@ -227,7 +227,6 @@ class TargetService {
       if (selected != null) {
         final payload = selected.payload as String;
         if (payload == 'refresh') {
-          await context.window.showMessage('Scanning for flutter targets');
           await launchConfigService.reload();
           refresh = true;
           continue;

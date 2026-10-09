@@ -50,7 +50,7 @@ class DeviceService {
         _selectedDeviceId ??= device['id'];
         _notifyChanged();
         if (_isInitialized) {
-          context.window.showMessage('Device connected: ${device['name']}');
+          daemonService.logService.info('Device connected: ${device['name']}');
         }
       }
     });
@@ -63,7 +63,8 @@ class DeviceService {
       }
       _notifyChanged();
       if (_isInitialized) {
-        context.window.showMessage('Device disconnected: ${device['name']}');
+        daemonService.logService
+            .info('Device disconnected: ${device['name']}');
       }
     });
   }
@@ -223,7 +224,6 @@ class DeviceService {
         return;
       }
       if (payload == 'refresh') {
-        await context.window.showMessage('Scanning for connected devices');
         _emulators = null;
         _emulatorDiscoveryError = null;
         await refreshDevices();

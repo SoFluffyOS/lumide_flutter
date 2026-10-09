@@ -1,5 +1,9 @@
 ## Unreleased
 
+### ✨ Enhancements
+
+- Fewer pop-up notifications: device connect/disconnect, scans, and DevTools URLs now go to the logs instead.
+
 ### 🐞 Bug Fixes
 
 - Show an error when a hot reload or hot restart fails (e.g. compile errors) instead of failing silently.

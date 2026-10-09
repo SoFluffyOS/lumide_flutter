@@ -1497,7 +1497,7 @@ class RunService {
       case 'app.devTools':
         if (params['uri'] case final String uri) {
           _devToolsUrl = uri;
-          unawaited(context.window.showMessage('DevTools available at: $uri'));
+          unawaited(_logInfo('DevTools available at: $uri'));
         }
         return;
 
@@ -2853,7 +2853,6 @@ class RunService {
 
     final url = await _getOrCreateDevToolsUrl();
     if (url != null) {
-      await context.window.showMessage('Opening DevTools in browser');
       await context.window.openUrl(url);
       return;
     }

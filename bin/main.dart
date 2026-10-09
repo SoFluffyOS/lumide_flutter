@@ -153,7 +153,7 @@ class FlutterPlugin extends LumidePlugin {
       }
     });
 
-    await context.window.showMessage('Flutter plugin ready');
+    logService.info('Flutter plugin ready.');
   }
 
   void _scheduleSdkSelectionRefresh(
