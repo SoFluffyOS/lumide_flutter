@@ -109,6 +109,18 @@ contributes:
     - id: flutter.clean
       title: 'Flutter: Clean'
       category: 'Flutter'
+    - id: flutter.pub.upgrade
+      title: 'Flutter: Pub Upgrade'
+      category: 'Flutter'
+    - id: flutter.pub.outdated
+      title: 'Flutter: Pub Outdated'
+      category: 'Flutter'
+    - id: flutter.genL10n
+      title: 'Flutter: Generate Localizations'
+      category: 'Flutter'
+    - id: flutter.buildRunner.build
+      title: 'Flutter: Run build_runner'
+      category: 'Flutter'
     - id: flutter.run
       title: 'Flutter: Run'
       category: 'Flutter'

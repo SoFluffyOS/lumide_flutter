@@ -90,5 +90,9 @@ const String cmdFlutterTogglePerformanceOverlay =
     'flutter.togglePerformanceOverlay';
 
 const String cmdFlutterRunFile = 'flutter.runFile';
+const String cmdFlutterPubUpgrade = 'flutter.pub.upgrade';
+const String cmdFlutterPubOutdated = 'flutter.pub.outdated';
+const String cmdFlutterGenL10n = 'flutter.genL10n';
+const String cmdFlutterBuildRunnerBuild = 'flutter.buildRunner.build';
 const String cmdFlutterShowWidgetPreview = 'flutter.showWidgetPreview';
 const String cmdFlutterStopWidgetPreview = 'flutter.stopWidgetPreview';

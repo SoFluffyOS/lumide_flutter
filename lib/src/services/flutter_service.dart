@@ -74,6 +74,47 @@ class FlutterService {
     await _runCommandInProject(['clean'], 'Cleaning build...');
   }
 
+  Future<void> pubUpgrade() async {
+    await _runCommandInProject(['pub', 'upgrade'], 'Running Pub Upgrade...');
+  }
+
+  Future<void> pubOutdated() async {
+    await _runCommandInProject(
+      ['pub', 'outdated'],
+      'Checking for outdated packages...',
+    );
+  }
+
+  Future<void> genL10n() async {
+    await _runCommandInProject(['gen-l10n'], 'Generating localizations...');
+  }
+
+  Future<void> buildRunnerBuild() async {
+    await _runCommandInProject(
+      ['pub', 'run', 'build_runner', 'build', '--delete-conflicting-outputs'],
+      'Running build_runner...',
+    );
+  }
+
+  static final _buildRunnerDependency =
+      RegExp(r'^\s+build_runner:', multiLine: true);
+
+  /// Which optional tools apply to the current project.
+  Future<({bool hasL10n, bool usesBuildRunner})> _projectTools() async {
+    try {
+      final root = await projectService.getProjectRoot();
+      final hasL10n = await context.fs.exists(path.join(root, 'l10n.yaml'));
+      final pubspec =
+          await context.fs.readString(path.join(root, 'pubspec.yaml'));
+      return (
+        hasL10n: hasL10n,
+        usesBuildRunner: pubspec.contains(_buildRunnerDependency),
+      );
+    } catch (_) {
+      return (hasL10n: false, usesBuildRunner: false);
+    }
+  }
+
   Future<void> cleanForContext(Map<String, dynamic>? args) async {
     await _runCommandForContext(
       args,
@@ -533,6 +574,51 @@ class FlutterService {
       ),
     );
 
+    items.addAll(const [
+      QuickPickItem(
+        label: 'Pub Upgrade',
+        description: 'flutter pub upgrade',
+        detail: 'flutter pub upgrade',
+        tooltip: 'Upgrade dependencies within the pubspec.yaml constraints.',
+        payload: cmdFlutterPubUpgrade,
+        icon: iconPackage,
+      ),
+      QuickPickItem(
+        label: 'Pub Outdated',
+        description: 'flutter pub outdated',
+        detail: 'flutter pub outdated',
+        tooltip: 'List dependencies that have newer versions.',
+        payload: cmdFlutterPubOutdated,
+        icon: iconPackage,
+      ),
+    ]);
+
+    final projectTools = await _projectTools();
+    if (projectTools.usesBuildRunner) {
+      items.add(
+        const QuickPickItem(
+          label: 'Run build_runner',
+          description: 'build_runner build',
+          detail: 'Generate code, replacing conflicting outputs',
+          tooltip: 'Generate code with build_runner.',
+          payload: cmdFlutterBuildRunnerBuild,
+          icon: iconCode,
+        ),
+      );
+    }
+    if (projectTools.hasL10n) {
+      items.add(
+        const QuickPickItem(
+          label: 'Generate Localizations',
+          description: 'flutter gen-l10n',
+          detail: 'flutter gen-l10n',
+          tooltip: 'Generate localizations from l10n.yaml.',
+          payload: cmdFlutterGenL10n,
+          icon: iconGlobe,
+        ),
+      );
+    }
+
     items.add(const QuickPickItem(label: '', isSeparator: true));
 
     items.add(
@@ -641,6 +727,18 @@ class FlutterService {
         case 'clean':
           await clean();
           break;
+        case cmdFlutterPubUpgrade:
+          await pubUpgrade();
+          return;
+        case cmdFlutterPubOutdated:
+          await pubOutdated();
+          return;
+        case cmdFlutterBuildRunnerBuild:
+          await buildRunnerBuild();
+          return;
+        case cmdFlutterGenL10n:
+          await genL10n();
+          return;
         case 'pubGetAll':
           await pubGetAll();
           break;

@@ -3,6 +3,7 @@
 ### 🚀 New Features
 
 - Run `pub get` automatically when a `pubspec.yaml` is saved (`flutter.pubGetOnPubspecSave`, on by default).
+- Add Pub Upgrade, Pub Outdated, Run build_runner, and Generate Localizations commands. build_runner and gen-l10n appear in the Tools menu when the project uses them.
 
 ### ✨ Enhancements
 

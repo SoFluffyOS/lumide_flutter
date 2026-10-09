@@ -271,6 +271,26 @@ class FlutterPlugin extends LumidePlugin {
         callback: ([args]) => flutterService.clean(),
       ),
       context.commands.registerCommand(
+        id: cmdFlutterPubUpgrade,
+        title: flutterCommandTitle(cmdFlutterPubUpgrade),
+        callback: ([args]) => flutterService.pubUpgrade(),
+      ),
+      context.commands.registerCommand(
+        id: cmdFlutterPubOutdated,
+        title: flutterCommandTitle(cmdFlutterPubOutdated),
+        callback: ([args]) => flutterService.pubOutdated(),
+      ),
+      context.commands.registerCommand(
+        id: cmdFlutterGenL10n,
+        title: flutterCommandTitle(cmdFlutterGenL10n),
+        callback: ([args]) => flutterService.genL10n(),
+      ),
+      context.commands.registerCommand(
+        id: cmdFlutterBuildRunnerBuild,
+        title: flutterCommandTitle(cmdFlutterBuildRunnerBuild),
+        callback: ([args]) => flutterService.buildRunnerBuild(),
+      ),
+      context.commands.registerCommand(
         id: cmdFlutterCreate,
         title: flutterCommandTitle(cmdFlutterCreate),
         callback: ([args]) => flutterService.create(),

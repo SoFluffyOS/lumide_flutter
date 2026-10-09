@@ -13,7 +13,7 @@ The official Flutter extension for [Lumide IDE](https://lumide.dev).
 - Open focused DevTools panes: Inspector, Performance, CPU Profiler, Memory, Network, and Logging.
 - Click a widget in the running app and jump to its Flutter source.
 - Toggle the performance overlay from the command palette.
-- Run `flutter doctor`, `pub get`, `clean`, and create new projects.
+- Run `flutter doctor`, `pub get`, `pub upgrade`, `pub outdated`, `clean`, `build_runner`, `gen-l10n`, and create new projects.
 - Select Flutter SDKs from PATH, FVM, Puro, or Lumide’s SDK manager.
 
 ## Commands
@@ -30,6 +30,8 @@ Use the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`).
 | `flutter.toggleWidgetInspector` | Click a widget and open its source |
 | `flutter.togglePerformanceOverlay` | Toggle the runtime overlay |
 | `flutter.doctor` / `flutter.pub.get` / `flutter.clean` | Run Flutter tools |
+| `flutter.pub.upgrade` / `flutter.pub.outdated` | Manage dependencies |
+| `flutter.buildRunner.build` / `flutter.genL10n` | Generate code and localizations |
 
 Hot reload on save is enabled by default. Configure it with `flutter.hotReloadOnSave`.
 
