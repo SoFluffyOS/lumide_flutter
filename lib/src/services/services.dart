@@ -10,6 +10,7 @@ export 'launch_source_resolver.dart';
 export 'log_service.dart';
 export 'machine_requests.dart';
 export 'project_service.dart';
+export 'pub_get_on_save.dart';
 export 'run_service.dart';
 export 'sdk/sdk.dart';
 export 'sdk_manager.dart';

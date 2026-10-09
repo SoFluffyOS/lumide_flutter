@@ -1,5 +1,9 @@
 ## Unreleased
 
+### 🚀 New Features
+
+- Run `pub get` automatically when a `pubspec.yaml` is saved (`flutter.pubGetOnPubspecSave`, on by default).
+
 ### ✨ Enhancements
 
 - Fewer pop-up notifications: device connect/disconnect, scans, and DevTools URLs now go to the logs instead.

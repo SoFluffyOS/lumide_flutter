@@ -33,6 +33,8 @@ Use the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`).
 
 Hot reload on save is enabled by default. Configure it with `flutter.hotReloadOnSave`.
 
+Saving a `pubspec.yaml` runs `pub get` for that package. Configure it with `flutter.pubGetOnPubspecSave`.
+
 ## SDKs
 
 Use **SDKs: Manage SDKs** to select or install Flutter. PATH, FVM, and Puro installations are also detected.

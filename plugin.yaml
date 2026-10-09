@@ -32,6 +32,11 @@ configuration:
     default: true
     title: 'Hot Reload on Save'
     description: 'Automatically hot reload the Flutter app when a file is saved.'
+  - key: flutter.pubGetOnPubspecSave
+    type: boolean
+    default: true
+    title: 'Pub Get on pubspec.yaml Save'
+    description: 'Automatically run pub get when a pubspec.yaml file is saved.'
   - key: flutter.clearLogOnHotRestart
     type: boolean
     default: true

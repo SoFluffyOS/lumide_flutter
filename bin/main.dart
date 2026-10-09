@@ -22,6 +22,7 @@ class FlutterPlugin extends LumidePlugin {
   late LaunchOptionsStore launchOptionsStore;
   late RunService runService;
   late WidgetPreviewService widgetPreviewService;
+  late PubGetOnSave pubGetOnSave;
   LumideSdkSelectionChangeEvent? _pendingSdkSelectionChange;
   Future<void>? _sdkSelectionWorker;
   bool _deactivating = false;
@@ -73,6 +74,14 @@ class FlutterPlugin extends LumidePlugin {
         targetService, daemonService, launchConfigService, launchOptionsStore);
     widgetPreviewService =
         WidgetPreviewService(context, projectService, sdkManager);
+    pubGetOnSave = PubGetOnSave(
+      isEnabled: () async =>
+          await context.workspace.getConfiguration(confPubGetOnPubspecSave)
+              as bool? ??
+          defaultPubGetOnPubspecSave,
+      pubGet: flutterService.pubGetAfterSave,
+    );
+    context.workspace.onDidSaveTextDocument(pubGetOnSave.handleSave);
     flutterService.openWidgetPreview = widgetPreviewService.open;
     flutterService.supportsWidgetPreview = widgetPreviewService.isSupported;
     deviceService.onDidChange = runService.refreshLaunchConfigurations;
@@ -459,6 +468,7 @@ class FlutterPlugin extends LumidePlugin {
     _pendingSdkSelectionChange = null;
     await _sdkSelectionWorker;
     if (!_workspaceServicesInitialized) return;
+    pubGetOnSave.dispose();
     await _disposeSafely('widget preview', widgetPreviewService.dispose);
     await _disposeSafely('run service', runService.dispose);
     await _disposeSafely('device service', deviceService.dispose);

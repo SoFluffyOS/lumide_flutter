@@ -32,6 +32,36 @@ class FlutterService {
     await _runCommandInProject(['pub', 'get'], 'Running Pub Get...');
   }
 
+  /// Runs `pub get` without clearing the output or showing a toast unless it
+  /// fails. Used after `pubspec.yaml` is saved.
+  Future<void> pubGetAfterSave(String packageRoot) async {
+    final output = runService.channel;
+    final packageName = path.basename(packageRoot);
+    await output?.append('> flutter pub get ($packageRoot)\n');
+    try {
+      final result = await _runWithCwd(const ['pub', 'get'], packageRoot);
+      if (result.exitCode == 0) {
+        await output?.append('pub get finished for $packageName.\n');
+        return;
+      }
+
+      final stdout = result.stdout.toString().trim();
+      final stderr = result.stderr.toString().trim();
+      if (stdout.isNotEmpty) await output?.append('$stdout\n');
+      if (stderr.isNotEmpty) await output?.append('$stderr\n');
+      await context.window.showMessage(
+        'pub get failed for $packageName. See the Flutter output for details.',
+        type: MessageType.error,
+      );
+    } catch (error) {
+      await output?.append('[ERROR] $error\n');
+      await context.window.showMessage(
+        'pub get failed for $packageName: $error',
+        type: MessageType.error,
+      );
+    }
+  }
+
   Future<void> pubGetForContext(Map<String, dynamic>? args) async {
     await _runCommandForContext(
       args,
