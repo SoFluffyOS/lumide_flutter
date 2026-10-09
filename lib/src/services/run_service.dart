@@ -110,7 +110,11 @@ class RunService {
   bool _breakpointsSyncedForActiveIsolate = false;
   bool _initialPauseReached = false;
   bool _initialResumePending = false;
-  int _requestId = 0;
+  final MachineRequests _machineRequests = MachineRequests();
+  late final HotReloadController _hotReloadController = HotReloadController(
+    send: _sendAppRestart,
+    onResult: _reportRestartResult,
+  );
   int _pendingLogCount = 0;
   int _maxPendingLogs = defaultMaxPendingLogs;
   int _pressureThreshold = defaultPressureThreshold;
@@ -242,7 +246,7 @@ class RunService {
           defaultHotReloadOnSave;
 
       if (!shouldReload) return;
-      await hotReload();
+      _hotReloadController.scheduleReload();
     });
   }
 
@@ -1322,7 +1326,8 @@ class RunService {
     _launchMode = mode;
     _activeAppId = null;
     _activeIsolateId = null;
-    _requestId = 0;
+    _machineRequests.reset();
+    _hotReloadController.cancelScheduled();
     _devToolsUrl = null;
     _wsUri = null;
     _clearFrameCache();
@@ -1349,6 +1354,8 @@ class RunService {
     _isRunning = false;
     _process = null;
     _activeAppId = null;
+    _machineRequests.cancelAll();
+    _hotReloadController.cancelScheduled();
     _devToolsUrl = null;
     _wsUri = null;
     _launchMode = null;
@@ -1503,9 +1510,9 @@ class RunService {
       if (decoded is! List) return;
 
       for (final item in decoded) {
-        if (item is Map<String, dynamic>) {
-          _handleMachineEvent(item);
-        }
+        if (item is! Map<String, dynamic>) continue;
+        if (_machineRequests.handle(item)) continue;
+        _handleMachineEvent(item);
       }
     } on FormatException {
       _channel?.append('$line\n');
@@ -1591,23 +1598,59 @@ class RunService {
     }
   }
 
-  void _sendMachineCommand(
+  Future<MachineResult> _sendMachineCommand(
     String method, [
     Map<String, dynamic>? extraParams,
   ]) {
     final appId = _activeAppId;
     final proc = _process;
-    if (proc == null || appId == null) return;
+    if (proc == null || appId == null) {
+      return Future.value(const MachineResult.cancelled());
+    }
 
     final params = <String, dynamic>{'appId': appId};
     if (extraParams != null) {
       params.addAll(extraParams);
     }
 
+    final (id, response) = _machineRequests.create();
     final payload = [
-      {'id': ++_requestId, 'method': method, 'params': params},
+      {'id': id, 'method': method, 'params': params},
     ];
     proc.stdin.writeln(jsonEncode(payload));
+    return response;
+  }
+
+  Future<MachineResult> _sendAppRestart({required bool fullRestart}) {
+    return _sendMachineCommand(
+      'app.restart',
+      {'fullRestart': fullRestart, 'pause': false},
+    );
+  }
+
+  Future<void> _reportRestartResult(
+    MachineResult result, {
+    required bool fullRestart,
+  }) async {
+    if (result.cancelled) return;
+    if (result.isSuccess) {
+      if (result.message.isNotEmpty) await _logInfo(result.message);
+      return;
+    }
+
+    final action = switch (fullRestart) {
+      true => 'Hot restart',
+      false => 'Hot reload',
+    };
+    final message = switch (result.message) {
+      '' => '$action failed.',
+      final detail => '$action failed ($detail).',
+    };
+    await _logError(message);
+    await context.window.showMessage(
+      '$message See the Flutter output for details.',
+      type: MessageType.error,
+    );
   }
 
   Future<void> _connectToVmService(String wsUri) async {
@@ -2162,10 +2205,7 @@ class RunService {
 
   Future<void> hotReload() async {
     if (!_isRunning || _activeAppId == null) return;
-    _sendMachineCommand(
-      'app.restart',
-      {'fullRestart': false, 'pause': false},
-    );
+    await _hotReloadController.reload();
   }
 
   Future<void> hotRestart() async {
@@ -2189,10 +2229,7 @@ class RunService {
       );
     }
 
-    _sendMachineCommand(
-      'app.restart',
-      {'fullRestart': true, 'pause': false},
-    );
+    await _hotReloadController.restart();
   }
 
   Future<void> continueExecution() async {
@@ -2933,7 +2970,9 @@ class RunService {
     );
 
     if (_activeAppId != null) {
-      _sendMachineCommand(_isAttachMode ? 'app.detach' : 'app.stop');
+      unawaited(
+        _sendMachineCommand(_isAttachMode ? 'app.detach' : 'app.stop'),
+      );
     }
 
     if (_process case final proc?) {
