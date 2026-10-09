@@ -4,6 +4,7 @@
 
 - Show an error when a hot reload or hot restart fails (e.g. compile errors) instead of failing silently.
 - Coalesce hot reloads on save so "Save All" triggers a single reload, and never send overlapping reload/restart requests.
+- Keep the selected target, flavor, build mode, and tool args after `flutter clean`.
 
 ## 1.14.0 (2026-09-22)
 

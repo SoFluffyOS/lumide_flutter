@@ -19,6 +19,7 @@ class FlutterPlugin extends LumidePlugin {
   late DaemonService daemonService;
   late LaunchConfigService launchConfigService;
   late TargetService targetService;
+  late LaunchOptionsStore launchOptionsStore;
   late RunService runService;
   late WidgetPreviewService widgetPreviewService;
   LumideSdkSelectionChangeEvent? _pendingSdkSelectionChange;
@@ -62,9 +63,14 @@ class FlutterPlugin extends LumidePlugin {
     flutterService = FlutterService(context, projectService, sdkManager);
     deviceService = DeviceService(context, statusBarService, daemonService);
     launchConfigService = LaunchConfigService(context, projectService, log);
-    targetService = TargetService(context, projectService, launchConfigService);
+    launchOptionsStore = LaunchOptionsStore(
+      storageDir: context.workspace.getPluginStorageDir,
+      projectRoot: projectService.getProjectRoot,
+    );
+    targetService = TargetService(
+        context, projectService, launchConfigService, launchOptionsStore);
     runService = RunService(context, projectService, sdkManager, deviceService,
-        targetService, daemonService, launchConfigService);
+        targetService, daemonService, launchConfigService, launchOptionsStore);
     widgetPreviewService =
         WidgetPreviewService(context, projectService, sdkManager);
     flutterService.openWidgetPreview = widgetPreviewService.open;

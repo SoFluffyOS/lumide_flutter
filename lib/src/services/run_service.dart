@@ -62,6 +62,7 @@ class RunService {
   final TargetService targetService;
   final DaemonService daemonService;
   final LaunchConfigService launchConfigService;
+  final LaunchOptionsStore launchOptionsStore;
 
   LumideOutputChannel? _channel;
   LumideOutputChannel? get channel => _channel;
@@ -140,6 +141,7 @@ class RunService {
     this.targetService,
     this.daemonService,
     this.launchConfigService,
+    this.launchOptionsStore,
   );
 
   Future<int> _readIntConfiguration(String key, int fallback) async {
@@ -1112,54 +1114,29 @@ class RunService {
     await _loadBuildModeCache();
   }
 
-  Future<String?> _flavorCachePath() async {
-    try {
-      final root = await projectService.getProjectRoot();
-      return path.join(root, '.dart_tool', 'lumide', 'flavor.txt');
-    } catch (_) {
-      return null;
-    }
-  }
-
   Future<void> _loadFlavorCache() async {
-    final cachePath = await _flavorCachePath();
-    if (cachePath == null || !await context.fs.exists(cachePath)) return;
-
     try {
-      final cached = await context.fs.readString(cachePath);
+      final cached = await launchOptionsStore.read(LaunchOptionsStore.flavorKey);
+      if (cached == null) return;
       final flavor = cached.trim();
       _selectedFlavor = flavor.isEmpty ? null : flavor;
     } catch (_) {}
   }
 
   Future<void> _saveFlavorCache() async {
-    final cachePath = await _flavorCachePath();
-    if (cachePath == null) return;
-
     try {
-      final dir = Directory(path.dirname(cachePath));
-      if (!await dir.exists()) {
-        await dir.create(recursive: true);
-      }
-      await context.fs.writeString(cachePath, _selectedFlavor ?? '');
+      await launchOptionsStore.write(
+        LaunchOptionsStore.flavorKey,
+        _selectedFlavor ?? '',
+      );
     } catch (_) {}
   }
 
-  Future<String?> _customToolArgsCachePath() async {
-    try {
-      final root = await projectService.getProjectRoot();
-      return path.join(root, '.dart_tool', 'lumide', 'tool_args.txt');
-    } catch (_) {
-      return null;
-    }
-  }
-
   Future<void> _loadCustomToolArgsCache() async {
-    final cachePath = await _customToolArgsCachePath();
-    if (cachePath == null || !await context.fs.exists(cachePath)) return;
-
     try {
-      final cached = await context.fs.readString(cachePath);
+      final cached =
+          await launchOptionsStore.read(LaunchOptionsStore.toolArgsKey);
+      if (cached == null) return;
       try {
         final decoded = jsonDecode(cached);
         if (decoded is List) {
@@ -1175,33 +1152,19 @@ class RunService {
   }
 
   Future<void> _saveCustomToolArgsCache() async {
-    final cachePath = await _customToolArgsCachePath();
-    if (cachePath == null) return;
-
     try {
-      final dir = Directory(path.dirname(cachePath));
-      if (!await dir.exists()) {
-        await dir.create(recursive: true);
-      }
-      await context.fs.writeString(cachePath, jsonEncode(_customToolArgs));
+      await launchOptionsStore.write(
+        LaunchOptionsStore.toolArgsKey,
+        jsonEncode(_customToolArgs),
+      );
     } catch (_) {}
   }
 
-  Future<String?> _buildModeCachePath() async {
-    try {
-      final root = await projectService.getProjectRoot();
-      return path.join(root, '.dart_tool', 'lumide', 'build_mode.txt');
-    } catch (_) {
-      return null;
-    }
-  }
-
   Future<void> _loadBuildModeCache() async {
-    final cachePath = await _buildModeCachePath();
-    if (cachePath == null || !await context.fs.exists(cachePath)) return;
-
     try {
-      final cached = await context.fs.readString(cachePath);
+      final cached =
+          await launchOptionsStore.read(LaunchOptionsStore.buildModeKey);
+      if (cached == null) return;
       final normalized = _normalizeBuildMode(cached);
       _selectedBuildMode = switch (normalized) {
         null || 'debug' => null,
@@ -1211,15 +1174,11 @@ class RunService {
   }
 
   Future<void> _saveBuildModeCache() async {
-    final cachePath = await _buildModeCachePath();
-    if (cachePath == null) return;
-
     try {
-      final dir = Directory(path.dirname(cachePath));
-      if (!await dir.exists()) {
-        await dir.create(recursive: true);
-      }
-      await context.fs.writeString(cachePath, _selectedBuildMode ?? '');
+      await launchOptionsStore.write(
+        LaunchOptionsStore.buildModeKey,
+        _selectedBuildMode ?? '',
+      );
     } catch (_) {}
   }
 

@@ -3,6 +3,7 @@ import 'dart:io' as io;
 import 'package:lumide_api/lumide_api.dart';
 import 'package:lumide_flutter/src/constants.dart';
 import 'package:lumide_flutter/src/services/launch_config_service.dart';
+import 'package:lumide_flutter/src/services/launch_options_store.dart';
 import 'package:lumide_flutter/src/services/project_service.dart';
 import 'package:path/path.dart' as path;
 
@@ -10,31 +11,27 @@ class TargetService {
   final LumideContext context;
   final ProjectService projectService;
   final LaunchConfigService launchConfigService;
+  final LaunchOptionsStore launchOptionsStore;
 
   String? _selectedTarget;
   VscodeLaunchEntry? _selectedVscodeEntry;
   bool _isLoading = true;
   Future<void> Function()? onDidChange;
 
-  TargetService(this.context, this.projectService, this.launchConfigService);
+  TargetService(
+    this.context,
+    this.projectService,
+    this.launchConfigService,
+    this.launchOptionsStore,
+  );
 
   VscodeLaunchEntry? get selectedVscodeEntry => _selectedVscodeEntry;
 
-  Future<String?> _getCachePath() async {
-    try {
-      final root = await projectService.getProjectRoot();
-      return path.join(root, '.dart_tool', 'lumide', 'target.txt');
-    } catch (_) {
-      return null;
-    }
-  }
-
   Future<void> _loadCache() async {
-    final cachePath = await _getCachePath();
-    if (cachePath == null || !await io.File(cachePath).exists()) return;
     try {
-      final cached = (await io.File(cachePath).readAsString()).trim();
-      if (cached.isEmpty) return;
+      final cached =
+          (await launchOptionsStore.read(LaunchOptionsStore.targetKey))?.trim();
+      if (cached == null || cached.isEmpty) return;
 
       if (cached.startsWith(vscodeConfigPrefix)) {
         // Restore a previously selected VS Code launch entry.
@@ -62,14 +59,8 @@ class TargetService {
       _ => _selectedTarget,
     };
     if (cacheValue == null) return;
-    final cachePath = await _getCachePath();
-    if (cachePath == null) return;
     try {
-      final dir = io.Directory(path.dirname(cachePath));
-      if (!await dir.exists()) {
-        await dir.create(recursive: true);
-      }
-      await io.File(cachePath).writeAsString(cacheValue);
+      await launchOptionsStore.write(LaunchOptionsStore.targetKey, cacheValue);
     } catch (_) {}
   }
 

@@ -5,6 +5,7 @@ export 'devtools_panel_service.dart';
 export 'flutter_service.dart';
 export 'hot_reload_controller.dart';
 export 'launch_config_service.dart';
+export 'launch_options_store.dart';
 export 'launch_source_resolver.dart';
 export 'log_service.dart';
 export 'machine_requests.dart';
