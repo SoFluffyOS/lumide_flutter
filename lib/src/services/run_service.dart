@@ -1825,9 +1825,9 @@ class RunService {
     }
   }
 
-  /// The VM has no conditional breakpoints, so conditions are evaluated on
-  /// pause. Resumes and returns true when every hit breakpoint's condition
-  /// is false.
+  /// Applies breakpoint conditions and logpoints on pause, since the VM has
+  /// neither. Prints logpoint messages, then resumes and returns true when no
+  /// hit breakpoint should stop.
   Future<bool> _resumeIfConditionsAreFalse(Event event) async {
     final service = _vmService;
     final isolateId = event.isolate?.id;
@@ -1837,25 +1837,76 @@ class RunService {
     };
     if (service == null || isolateId == null || hitIds.isEmpty) return false;
 
-    final conditions = [
+    final breakpoints = <HitBreakpoint>[
       for (final installed in _installedBreakpointsByKey.values)
         if (installed.vmBreakpoint?.id case final id? when hitIds.contains(id))
-          installed.requested.condition,
+          (
+            condition: installed.requested.condition,
+            logMessage: installed.requested.logMessage,
+          ),
     ];
-    final allHitBreakpointsKnown = conditions.length == hitIds.length;
+    final allHitBreakpointsKnown = breakpoints.length == hitIds.length;
     if (!allHitBreakpointsKnown) return false;
 
-    final skip = await shouldSkipConditionalPause(
-      conditions: conditions,
+    final decision = await decideBreakpointPause(
+      breakpoints: breakpoints,
       evaluate: (expression) =>
           _evaluateCondition(service, isolateId, expression),
     );
-    if (!skip) return false;
+    for (final template in decision.logMessages) {
+      await _printLogpoint(service, isolateId, template);
+    }
+    if (!decision.resume) return false;
     await service.resume(isolateId);
     return true;
   }
 
-  /// Broken conditions are reported once per session, not on every hit.
+  Future<void> _printLogpoint(
+    VmService service,
+    String isolateId,
+    String template,
+  ) async {
+    final message = await formatLogMessage(
+      template,
+      (expression) => _evaluateLogExpression(service, isolateId, expression),
+    );
+    await _channel?.appendLog(
+      LumideLogRecord(
+        level: 'INFO',
+        message: message,
+        name: 'Logpoint',
+        time: DateTime.now(),
+      ),
+    );
+  }
+
+  /// Evaluates `{expression}` from a logpoint as text. Failures are reported
+  /// once per session, like broken conditions.
+  Future<String?> _evaluateLogExpression(
+    VmService service,
+    String isolateId,
+    String expression,
+  ) async {
+    try {
+      final result = await service.evaluateInFrame(
+        isolateId,
+        0,
+        '($expression).toString()',
+        disableBreakpoints: true,
+      );
+      if (result case InstanceRef(:final valueAsString?)) return valueAsString;
+      if (result case ErrorRef(:final message?)) throw StateError(message);
+      throw StateError('No value');
+    } catch (error) {
+      if (_reportedBrokenConditions.add('log:$expression')) {
+        await _logError('Logpoint expression "$expression" failed', error);
+      }
+      return null;
+    }
+  }
+
+  /// Broken conditions and logpoint expressions are reported once per
+  /// session, not on every hit.
   final Set<String> _reportedBrokenConditions = {};
 
   Future<bool?> _evaluateCondition(
@@ -2723,7 +2774,16 @@ class RunService {
 
     for (final entry in desiredBreakpoints.entries) {
       final existing = _installedBreakpointsByKey[entry.key];
-      if (existing?.vmBreakpoint != null) continue;
+      if (existing case _InstalledVmBreakpoint(:final vmBreakpoint?)) {
+        // Keep the installed VM breakpoint, but pick up edited conditions and
+        // log messages.
+        _installedBreakpointsByKey[entry.key] = _InstalledVmBreakpoint(
+          requested: entry.value,
+          vmBreakpoint: vmBreakpoint,
+          message: existing.message,
+        );
+        continue;
+      }
 
       try {
         final vmBreakpoint = await _addVmBreakpointWithFallback(
@@ -2819,6 +2879,7 @@ class RunService {
         endLine: breakpoint.endLine,
         endColumn: breakpoint.endColumn,
         condition: breakpoint.condition,
+        logMessage: breakpoint.logMessage,
         enabled: breakpoint.enabled,
         verified: installed?.vmBreakpoint?.resolved ?? false,
         message: _breakpointMessageFor(breakpoint, installed),
