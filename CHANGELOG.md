@@ -1,21 +1,25 @@
-## Unreleased
+## 1.15.0 (2026-10-11)
 
 ### 🚀 New Features
 
 - Run `pub get` when `pubspec.yaml` is saved (`flutter.pubGetOnPubspecSave`).
 - Add Pub Upgrade, Pub Outdated, build_runner, and gen-l10n commands.
 - Open `web-server` apps in the browser.
+- Support breakpoint conditions (*).
 
 ### ✨ Enhancements
 
 - Show fewer pop-up notifications.
 - Hot reload once per save, even with "Save All".
+- Find Flutter projects in workspace subfolders.
 
 ### 🐞 Bug Fixes
 
 - Show hot reload and hot restart errors.
-- Support breakpoint conditions.
 - Keep target, flavor, build mode, and tool args after `flutter clean`.
+- Fix Flutter SDK resolution on ARM64.
+
+> (*) Note: Editing breakpoint conditions requires Lumide 0.23.0 and later.
 
 ## 1.14.0 (2026-09-22)
 
