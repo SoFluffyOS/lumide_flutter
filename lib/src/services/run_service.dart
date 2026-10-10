@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:lumide_api/lumide_api.dart';
 import 'package:lumide_flutter/src/constants.dart';
@@ -67,7 +66,7 @@ class RunService {
   LumideOutputChannel? _channel;
   LumideOutputChannel? get channel => _channel;
 
-  Process? _process;
+  SdkProcess? _process;
   StreamSubscription<String>? _stdoutSub;
   StreamSubscription<String>? _stderrSub;
   bool _isRunning = false;
@@ -992,10 +991,9 @@ class RunService {
       }
       vscodeEnv.addAll(_stringMapArgument(configuration, 'env'));
 
-      _process = await Process.start(
-        executable,
-        finalArgs,
-        workingDirectory: workingDirectory,
+      _process = await sdkManager.startFlutter(
+        workingDirectory,
+        args,
         environment: vscodeEnv.isNotEmpty ? vscodeEnv : null,
       );
 
@@ -1020,11 +1018,10 @@ class RunService {
 
       if (_process case final proc?) {
         _stdoutSub = proc.stdout
-            .transform(utf8.decoder)
             .transform(const LineSplitter())
             .listen(_handleStdoutLine);
 
-        _stderrSub = proc.stderr.transform(utf8.decoder).listen((data) {
+        _stderrSub = proc.stderr.listen((data) {
           _channel?.append(data);
         });
 
@@ -1591,7 +1588,7 @@ class RunService {
     final payload = [
       {'id': id, 'method': method, 'params': params},
     ];
-    proc.stdin.writeln(jsonEncode(payload));
+    proc.write('${jsonEncode(payload)}\n');
     return response;
   }
 
@@ -3078,7 +3075,7 @@ class RunService {
       await proc.exitCode.timeout(
         const Duration(seconds: 5),
         onTimeout: () {
-          proc.kill(ProcessSignal.sigkill);
+          unawaited(proc.kill(force: true));
           return -1;
         },
       );

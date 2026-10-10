@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:lumide_api/lumide_api.dart';
+import 'package:lumide_flutter/src/services/sdk_process.dart';
 import 'package:path/path.dart' as path;
 
 class SdkManager {
@@ -25,53 +26,97 @@ class SdkManager {
 
   Future<List<String>> getFlutterCommand(String projectRoot) async {
     try {
-      final resolution = await context.sdks.resolve(
-        LumideSdkResolveRequest(
-          kind: LumideSdkKind.flutter,
-          providerId: 'flutter',
-          workspacePath: projectRoot,
-          executable: 'flutter',
-        ),
-      );
-      if (resolution case final res? when res.executable.isNotEmpty) {
-        final isWorkspaceScoped =
-            res.installation.managerScope == LumideSdkManagerScope.workspace;
-        final wsRoot = await _workspaceRoot();
-        final normalizedProject = path.normalize(path.absolute(projectRoot));
-        final isAtWorkspaceRoot = switch (wsRoot) {
-          final root? => path.equals(root, normalizedProject),
-          _ => true,
-        };
-
-        if (isWorkspaceScoped || isAtWorkspaceRoot) {
-          return [res.executable, ...res.arguments];
-        }
-
-        if (wsRoot case final root?) {
-          final wsResolution = await context.sdks.resolve(
-            LumideSdkResolveRequest(
-              kind: LumideSdkKind.flutter,
-              providerId: 'flutter',
-              workspacePath: root,
-              executable: 'flutter',
-            ),
-          );
-          if (wsResolution case final wsRes? when wsRes.executable.isNotEmpty) {
-            final isWsScoped = wsRes.installation.managerScope ==
-                LumideSdkManagerScope.workspace;
-            if (isWsScoped) {
-              return [wsRes.executable, ...wsRes.arguments];
-            }
-          }
-        }
-
-        return [res.executable, ...res.arguments];
+      final resolved = await _resolveFlutter(projectRoot);
+      if (resolved case (request: _, :final resolution)) {
+        return [resolution.executable, ...resolution.arguments];
       }
     } catch (_) {
       // Host resolution failed or threw. Fall back to legacy discovery.
     }
     return _legacyFlutterCommand(projectRoot);
   }
+
+  /// Starts `flutter <arguments>` with the SDK [getFlutterCommand] picks.
+  ///
+  /// Lumide starts the process (`sdks.spawn`) so it runs under the host's SDK
+  /// policy. Hosts without it, or without a resolved SDK, fall back to a
+  /// local process.
+  Future<SdkProcess> startFlutter(
+    String projectRoot,
+    List<String> arguments, {
+    String? workingDirectory,
+    Map<String, String>? environment,
+  }) async {
+    try {
+      final resolved = await _resolveFlutter(projectRoot);
+      if (resolved case (:final request, resolution: _)) {
+        return await _hostProcesses.spawn(
+          () => context.sdks.spawn(
+            request,
+            arguments,
+            workingDirectory: workingDirectory ?? projectRoot,
+            environment: environment,
+          ),
+        );
+      }
+    } catch (_) {
+      // Fall back to a local process below.
+    }
+    final command = await getFlutterCommand(projectRoot);
+    return LocalSdkProcess.start(
+      [...command, ...arguments],
+      workingDirectory: workingDirectory ?? projectRoot,
+      environment: environment,
+    );
+  }
+
+  late final HostProcessHub _hostProcesses = HostProcessHub(context.shell);
+
+  void dispose() => _hostProcesses.dispose();
+
+  /// Resolves the Flutter SDK for [projectRoot]. A nested package uses the
+  /// workspace root's SDK when that one is pinned to the workspace.
+  Future<
+      ({
+        LumideSdkResolveRequest request,
+        LumideSdkResolution resolution,
+      })?> _resolveFlutter(String projectRoot) async {
+    final request = _flutterRequest(projectRoot);
+    final resolution = await context.sdks.resolve(request);
+    if (resolution == null || resolution.executable.isEmpty) return null;
+
+    final isWorkspaceScoped =
+        resolution.installation.managerScope == LumideSdkManagerScope.workspace;
+    final wsRoot = await _workspaceRoot();
+    final normalizedProject = path.normalize(path.absolute(projectRoot));
+    final isAtWorkspaceRoot = switch (wsRoot) {
+      final root? => path.equals(root, normalizedProject),
+      _ => true,
+    };
+    if (isWorkspaceScoped || isAtWorkspaceRoot) {
+      return (request: request, resolution: resolution);
+    }
+
+    if (wsRoot case final root?) {
+      final wsRequest = _flutterRequest(root);
+      final wsResolution = await context.sdks.resolve(wsRequest);
+      if (wsResolution case final wsRes? when wsRes.executable.isNotEmpty) {
+        final isWsScoped =
+            wsRes.installation.managerScope == LumideSdkManagerScope.workspace;
+        if (isWsScoped) return (request: wsRequest, resolution: wsRes);
+      }
+    }
+
+    return (request: request, resolution: resolution);
+  }
+
+  LumideSdkResolveRequest _flutterRequest(String workspacePath) =>
+      LumideSdkResolveRequest(
+        kind: LumideSdkKind.flutter,
+        providerId: 'flutter',
+        workspacePath: workspacePath,
+        executable: 'flutter',
+      );
 
   Future<List<String>> _legacyFlutterCommand(String projectRoot) async {
     final searchDirs = <String>[projectRoot];

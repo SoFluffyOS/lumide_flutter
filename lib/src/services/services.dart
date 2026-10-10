@@ -15,6 +15,7 @@ export 'pub_get_on_save.dart';
 export 'run_service.dart';
 export 'sdk/sdk.dart';
 export 'sdk_manager.dart';
+export 'sdk_process.dart';
 export 'status_bar_service.dart';
 export 'target_service.dart';
 export 'widget_inspector_service.dart';

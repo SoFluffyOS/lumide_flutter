@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:lumide_api/lumide_api.dart';
 import 'package:lumide_flutter/src/services/services.dart';
@@ -11,7 +10,7 @@ class DaemonService {
   final SdkManager sdkManager;
   final LogService logService;
 
-  Process? _process;
+  SdkProcess? _process;
   StreamSubscription<String>? _stdoutSub;
   StreamSubscription<String>? _stderrSub;
 
@@ -71,25 +70,17 @@ class DaemonService {
 
     try {
       final root = await projectService.getProjectRoot();
-      final flutterCmd = await sdkManager.getFlutterCommand(root);
-      final executable = flutterCmd.first;
-      final args = [...flutterCmd.sublist(1), 'daemon'];
-      final process = await Process.start(
-        executable,
-        args,
-        workingDirectory: root,
-      );
+      final process = await sdkManager.startFlutter(root, const ['daemon']);
       if (_disposed) {
-        process.kill();
+        unawaited(process.kill());
         return;
       }
       _process = process;
 
       _stdoutSub = process.stdout
-          .transform(utf8.decoder)
           .transform(const LineSplitter())
           .listen(_handleStdoutLine);
-      _stderrSub = process.stderr.transform(utf8.decoder).listen((data) {
+      _stderrSub = process.stderr.listen((data) {
         logService.warn('Daemon stderr: $data');
       });
 
@@ -233,7 +224,7 @@ class DaemonService {
 
     final payload = [request];
     try {
-      process.stdin.writeln(jsonEncode(payload));
+      process.write('${jsonEncode(payload)}\n');
       return await completer.future.timeout(requestTimeout);
     } finally {
       // Late responses are ignored and cannot retain timed-out requests.
@@ -283,11 +274,10 @@ class DaemonService {
         final id = ++_requestId;
         final completer = Completer<dynamic>();
         _pendingRequests[id] = completer;
-        process.stdin.writeln(
-          jsonEncode([
-            {'id': id, 'method': 'daemon.shutdown'},
-          ]),
-        );
+        final shutdown = jsonEncode([
+          {'id': id, 'method': 'daemon.shutdown'},
+        ]);
+        process.write('$shutdown\n');
         await completer.future.timeout(const Duration(seconds: 1));
       } catch (_) {
         // Continue with process termination below.
@@ -295,7 +285,7 @@ class DaemonService {
       try {
         await process.exitCode.timeout(const Duration(seconds: 2));
       } catch (_) {
-        process.kill(ProcessSignal.sigkill);
+        await process.kill(force: true);
         try {
           await process.exitCode.timeout(const Duration(seconds: 1));
         } catch (_) {

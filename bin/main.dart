@@ -498,6 +498,7 @@ class FlutterPlugin extends LumidePlugin {
     await _disposeSafely('status bar service', statusBarService.dispose);
     await _disposeSafely('Flutter daemon', daemonService.dispose);
     await _disposeSafely('Flutter service', flutterService.dispose);
+    sdkManager.dispose();
   }
 
   Future<void> _disposeSafely(
