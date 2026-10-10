@@ -151,8 +151,11 @@ class _Panel implements LumideWebviewPanel {
   void Function(Object)? onMessage;
   void closeFromHost() => onMessage?.call({'lumideEvent': 'webviewDisposed'});
   @override
-  void onDidReceiveMessage(void Function(Object message) callback) {
+  LumideDisposable onDidReceiveMessage(
+    void Function(Object message) callback,
+  ) {
     onMessage = callback;
+    return LumideDisposable(() => onMessage = null);
   }
 
   @override
