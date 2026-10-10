@@ -67,6 +67,9 @@ class RunService {
   LumideOutputChannel? get channel => _channel;
 
   SdkProcess? _process;
+
+  /// Runs tests for a `test` launch configuration.
+  Future<void> Function({String? target, List<String> toolArgs})? onTestLaunch;
   StreamSubscription<String>? _stdoutSub;
   StreamSubscription<String>? _stderrSub;
   bool _isRunning = false;
@@ -202,6 +205,7 @@ class RunService {
           LumideLaunchKind.run,
           LumideLaunchKind.debug,
           LumideLaunchKind.attach,
+          LumideLaunchKind.test,
         ],
         defaultKinds: const [
           LumideLaunchKind.run,
@@ -216,6 +220,13 @@ class RunService {
             'config': {
               'target': r'${workspaceFolder}/lib/main.dart',
               'buildMode': 'debug',
+            },
+          },
+          {
+            'name': 'Flutter Tests',
+            'kinds': ['test'],
+            'config': {
+              'target': r'${workspaceFolder}/test',
             },
           },
         ],
@@ -614,12 +625,47 @@ class RunService {
       }
     }
 
+    if (request.kind == LumideLaunchKind.test) {
+      await _launchTests(request.configuration);
+      return;
+    }
+
     final mode = switch (request.kind) {
       LumideLaunchKind.debug => _FlutterLaunchMode.debug,
       LumideLaunchKind.attach => _FlutterLaunchMode.attach,
       _ => _FlutterLaunchMode.run,
     };
     await _launch(mode, configuration: request.configuration);
+  }
+
+  Future<void> _launchTests(LumideLaunchConfiguration configuration) async {
+    final runTests = onTestLaunch;
+    if (runTests == null) return;
+    final rawTarget = _stringArgument(configuration, 'target');
+    final rawToolArgs =
+        _stringListArgument(configuration, 'toolArgs', fallback: const []);
+    final needsVariables = [rawTarget, ...rawToolArgs]
+        .any((value) => value?.contains(r'$') ?? false);
+    final variables = switch (needsVariables) {
+      true => await launchConfigService.fetchVariableContext(),
+      false => null,
+    };
+    final target = switch (rawTarget) {
+      final value? when value.trim().isNotEmpty => await launchConfigService
+          .resolveDynamicVariables(value.trim(), ctx: variables),
+      _ => null,
+    };
+    final toolArgs = [
+      for (final arg in rawToolArgs)
+        await launchConfigService.resolveDynamicVariables(arg, ctx: variables),
+    ];
+    final workspaceRoot = await projectService.getWorkspaceRoot();
+    final absoluteTarget = switch (target) {
+      final value? when path.isRelative(value) =>
+        path.join(workspaceRoot, value),
+      final value => value,
+    };
+    await runTests(target: absoluteTarget, toolArgs: toolArgs);
   }
 
   Future<void> run() async {

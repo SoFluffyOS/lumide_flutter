@@ -96,3 +96,6 @@ const String cmdFlutterGenL10n = 'flutter.genL10n';
 const String cmdFlutterBuildRunnerBuild = 'flutter.buildRunner.build';
 const String cmdFlutterShowWidgetPreview = 'flutter.showWidgetPreview';
 const String cmdFlutterStopWidgetPreview = 'flutter.stopWidgetPreview';
+const String cmdFlutterTest = 'flutter.test';
+const String cmdFlutterTestFile = 'flutter.testFile';
+const String cmdFlutterStopTests = 'flutter.stopTests';

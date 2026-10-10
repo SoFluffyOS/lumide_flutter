@@ -21,6 +21,7 @@ class FlutterPlugin extends LumidePlugin {
   late TargetService targetService;
   late LaunchOptionsStore launchOptionsStore;
   late RunService runService;
+  late TestRunService testRunService;
   late WidgetPreviewService widgetPreviewService;
   late PubGetOnSave pubGetOnSave;
   LumideSdkSelectionChangeEvent? _pendingSdkSelectionChange;
@@ -74,6 +75,9 @@ class FlutterPlugin extends LumidePlugin {
         targetService, daemonService, launchConfigService, launchOptionsStore);
     widgetPreviewService =
         WidgetPreviewService(context, projectService, sdkManager);
+    testRunService =
+        TestRunService(context, projectService, sdkManager, logService);
+    runService.onTestLaunch = testRunService.run;
     pubGetOnSave = PubGetOnSave(
       isEnabled: () async =>
           await context.workspace.getConfiguration(confPubGetOnPubspecSave)
@@ -372,6 +376,21 @@ class FlutterPlugin extends LumidePlugin {
         callback: ([args]) => runService.togglePerformanceOverlay(),
       ),
       context.commands.registerCommand(
+        id: cmdFlutterTest,
+        title: flutterCommandTitle(cmdFlutterTest),
+        callback: ([args]) => testRunService.runAll(),
+      ),
+      context.commands.registerCommand(
+        id: cmdFlutterTestFile,
+        title: flutterCommandTitle(cmdFlutterTestFile),
+        callback: ([args]) => testRunService.runFile(args),
+      ),
+      context.commands.registerCommand(
+        id: cmdFlutterStopTests,
+        title: flutterCommandTitle(cmdFlutterStopTests),
+        callback: ([args]) => testRunService.stop(),
+      ),
+      context.commands.registerCommand(
         id: cmdFlutterTools,
         title: flutterCommandTitle(cmdFlutterTools),
         callback: ([args]) => flutterService.showToolsMenu(args),
@@ -438,6 +457,16 @@ class FlutterPlugin extends LumidePlugin {
       ),
       context.menus.registerAction(
         const LumideMenuAction(
+          id: 'test_file_tree',
+          title: 'Run Flutter Tests',
+          command: cmdFlutterTestFile,
+          location: LumideMenuLocation.fileTreeItem,
+          group: 'tools',
+          priority: 105,
+        ),
+      ),
+      context.menus.registerAction(
+        const LumideMenuAction(
           id: 'clean_file_tree',
           title: 'Flutter Clean',
           command: cmdFlutterCleanForContext,
@@ -490,6 +519,7 @@ class FlutterPlugin extends LumidePlugin {
     if (!_workspaceServicesInitialized) return;
     pubGetOnSave.dispose();
     await _disposeSafely('widget preview', widgetPreviewService.dispose);
+    await _disposeSafely('test run service', testRunService.dispose);
     await _disposeSafely('run service', runService.dispose);
     await _disposeSafely('device service', deviceService.dispose);
     await _disposeSafely('target service', targetService.dispose);

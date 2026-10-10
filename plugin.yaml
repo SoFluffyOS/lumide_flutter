@@ -115,6 +115,15 @@ contributes:
     - id: flutter.pub.outdated
       title: 'Flutter: Pub Outdated'
       category: 'Flutter'
+    - id: flutter.test
+      title: 'Flutter: Run Tests'
+      category: 'Flutter'
+    - id: flutter.testFile
+      title: 'Flutter: Run Tests in File'
+      category: 'Flutter'
+    - id: flutter.stopTests
+      title: 'Flutter: Stop Tests'
+      category: 'Flutter'
     - id: flutter.genL10n
       title: 'Flutter: Generate Localizations'
       category: 'Flutter'
