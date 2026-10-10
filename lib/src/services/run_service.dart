@@ -1283,6 +1283,7 @@ class RunService {
 
   Future<void> _prepareForLaunch(_FlutterLaunchMode mode) async {
     _launchMode = mode;
+    _reportedBrokenConditions.clear();
     _activeAppId = null;
     _activeIsolateId = null;
     _machineRequests.reset();
@@ -1854,6 +1855,9 @@ class RunService {
     return true;
   }
 
+  /// Broken conditions are reported once per session, not on every hit.
+  final Set<String> _reportedBrokenConditions = {};
+
   Future<bool?> _evaluateCondition(
     VmService service,
     String isolateId,
@@ -1869,10 +1873,14 @@ class RunService {
       if (result case InstanceRef(kind: InstanceKind.kBool, :final valueAsString)) {
         return valueAsString == 'true';
       }
-      await _logError('Breakpoint condition "$expression" is not a bool');
+      if (_reportedBrokenConditions.add(expression)) {
+        await _logError('Breakpoint condition "$expression" is not a bool');
+      }
       return null;
     } catch (error) {
-      await _logError('Breakpoint condition "$expression" failed', error);
+      if (_reportedBrokenConditions.add(expression)) {
+        await _logError('Breakpoint condition "$expression" failed', error);
+      }
       return null;
     }
   }
