@@ -2,20 +2,20 @@
 
 ### 🚀 New Features
 
-- Run `pub get` automatically when a `pubspec.yaml` is saved (`flutter.pubGetOnPubspecSave`, on by default).
-- Add Pub Upgrade, Pub Outdated, Run build_runner, and Generate Localizations commands. build_runner and gen-l10n appear in the Tools menu when the project uses them.
+- Run `pub get` when `pubspec.yaml` is saved (`flutter.pubGetOnPubspecSave`).
+- Add Pub Upgrade, Pub Outdated, build_runner, and gen-l10n commands.
+- Open `web-server` apps in the browser.
 
 ### ✨ Enhancements
 
-- Fewer pop-up notifications: device connect/disconnect, scans, and DevTools URLs now go to the logs instead.
-- Open the browser automatically for `web-server` runs, and log the web app URL.
+- Show fewer pop-up notifications.
+- Hot reload once per save, even with "Save All".
 
 ### 🐞 Bug Fixes
 
-- Honor breakpoint conditions: the debugger only stops when the condition is true (edit conditions from Lumide's Breakpoints panel).
-- Show an error when a hot reload or hot restart fails (e.g. compile errors) instead of failing silently.
-- Coalesce hot reloads on save so "Save All" triggers a single reload, and never send overlapping reload/restart requests.
-- Keep the selected target, flavor, build mode, and tool args after `flutter clean`.
+- Show hot reload and hot restart errors.
+- Support breakpoint conditions.
+- Keep target, flavor, build mode, and tool args after `flutter clean`.
 
 ## 1.14.0 (2026-09-22)
 
