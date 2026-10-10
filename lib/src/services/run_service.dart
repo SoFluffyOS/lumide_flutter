@@ -1763,6 +1763,11 @@ class RunService {
         return;
 
       case EventKind.kPauseBreakpoint:
+        if (await _resumeIfConditionsAreFalse(event)) return;
+        await _applyPausedDebugState(event);
+        await _tryResumeAfterInitialBreakpointSync();
+        return;
+
       case EventKind.kPauseInterrupted:
       case EventKind.kPauseException:
       case EventKind.kPausePostRequest:
@@ -1816,6 +1821,59 @@ class RunService {
       case EventKind.kVMUpdate:
       case EventKind.kVMFlagUpdate:
         return;
+    }
+  }
+
+  /// The VM has no conditional breakpoints, so conditions are evaluated on
+  /// pause. Resumes and returns true when every hit breakpoint's condition
+  /// is false.
+  Future<bool> _resumeIfConditionsAreFalse(Event event) async {
+    final service = _vmService;
+    final isolateId = event.isolate?.id;
+    final hitIds = {
+      for (final breakpoint in event.pauseBreakpoints ?? const <Breakpoint>[])
+        if (breakpoint.id case final id?) id,
+    };
+    if (service == null || isolateId == null || hitIds.isEmpty) return false;
+
+    final conditions = [
+      for (final installed in _installedBreakpointsByKey.values)
+        if (installed.vmBreakpoint?.id case final id? when hitIds.contains(id))
+          installed.requested.condition,
+    ];
+    final allHitBreakpointsKnown = conditions.length == hitIds.length;
+    if (!allHitBreakpointsKnown) return false;
+
+    final skip = await shouldSkipConditionalPause(
+      conditions: conditions,
+      evaluate: (expression) =>
+          _evaluateCondition(service, isolateId, expression),
+    );
+    if (!skip) return false;
+    await service.resume(isolateId);
+    return true;
+  }
+
+  Future<bool?> _evaluateCondition(
+    VmService service,
+    String isolateId,
+    String expression,
+  ) async {
+    try {
+      final result = await service.evaluateInFrame(
+        isolateId,
+        0,
+        expression,
+        disableBreakpoints: true,
+      );
+      if (result case InstanceRef(kind: InstanceKind.kBool, :final valueAsString)) {
+        return valueAsString == 'true';
+      }
+      await _logError('Breakpoint condition "$expression" is not a bool');
+      return null;
+    } catch (error) {
+      await _logError('Breakpoint condition "$expression" failed', error);
+      return null;
     }
   }
 

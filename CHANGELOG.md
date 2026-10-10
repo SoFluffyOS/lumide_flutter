@@ -12,6 +12,7 @@
 
 ### 🐞 Bug Fixes
 
+- Honor breakpoint conditions: the debugger only stops when the condition is true (edit conditions from Lumide's Breakpoints panel).
 - Show an error when a hot reload or hot restart fails (e.g. compile errors) instead of failing silently.
 - Coalesce hot reloads on save so "Save All" triggers a single reload, and never send overlapping reload/restart requests.
 - Keep the selected target, flavor, build mode, and tool args after `flutter clean`.

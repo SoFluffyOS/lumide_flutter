@@ -1,3 +1,4 @@
+export 'breakpoint_conditions.dart';
 export 'daemon_service.dart';
 export 'device_service.dart';
 export 'devtools_page.dart';
