@@ -1,3 +1,16 @@
+## Unreleased
+
+### 🚀 New Features
+
+- Run tests and see results in Lumide's Tests pane (*).
+- Support logpoints (*).
+
+### ✨ Enhancements
+
+- Start `flutter run` and the Flutter daemon through Lumide's SDK manager.
+
+> (*) Note: These features require Lumide 0.23.0 and later.
+
 ## 1.15.0 (2026-10-11)
 
 ### 🚀 New Features

@@ -9,7 +9,8 @@ The official Flutter extension for [Lumide IDE](https://lumide.dev).
 - Run, debug, attach, hot reload, and hot restart Flutter apps.
 - Launch and switch devices, including stopped Android emulators and iOS Simulator.
 - Set targets, flavors, build modes, and launch configurations.
-- Use breakpoints, stepping, stack frames, scopes, variables, and evaluation.
+- Use breakpoints, conditions, logpoints, stepping, stack frames, scopes, variables, and evaluation.
+- Run tests and see results in the Tests pane.
 - Open focused DevTools panes: Inspector, Performance, CPU Profiler, Memory, Network, and Logging.
 - Click a widget in the running app and jump to its Flutter source.
 - Toggle the performance overlay from the command palette.
@@ -26,6 +27,7 @@ Use the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`).
 | `flutter.selectDevice` | Choose a device or launch an AVD |
 | `flutter.selectTarget` | Choose the Dart entry point |
 | `flutter.hotReload` / `flutter.hotRestart` | Apply code changes or reset state |
+| `flutter.test` / `flutter.testFile` / `flutter.stopTests` | Run all tests, the current file's tests, or stop |
 | `flutter.devtools.<page>` | Open one DevTools page |
 | `flutter.toggleWidgetInspector` | Click a widget and open its source |
 | `flutter.togglePerformanceOverlay` | Toggle the runtime overlay |
@@ -36,6 +38,10 @@ Use the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`).
 Hot reload on save is enabled by default. Configure it with `flutter.hotReloadOnSave`.
 
 Saving a `pubspec.yaml` runs `pub get` for that package. Configure it with `flutter.pubGetOnPubspecSave`.
+
+## Logpoints
+
+Add a log message to a breakpoint in the Breakpoints panel. `{expression}` placeholders are evaluated in the paused frame, printed to the output, and the app keeps running. Requires Lumide 0.23.0 and later.
 
 ## SDKs
 
