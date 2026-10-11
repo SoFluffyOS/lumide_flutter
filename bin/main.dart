@@ -388,7 +388,7 @@ class FlutterPlugin extends LumidePlugin {
       context.commands.registerCommand(
         id: cmdFlutterStopTests,
         title: flutterCommandTitle(cmdFlutterStopTests),
-        callback: ([args]) => testRunService.stop(),
+        callback: ([args]) => testRunService.stop(args),
       ),
       context.commands.registerCommand(
         id: cmdFlutterRerunTests,

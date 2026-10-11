@@ -13,9 +13,10 @@ import 'package:path/path.dart' as path;
 
 /// Runs `flutter test --machine` and shows results in Lumide's Tests pane.
 ///
-/// One run at a time: starting a new run stops the previous one. Output goes
-/// to the "Flutter Tests" channel, and recent runs are remembered so the
-/// Tests pane can run them, or tests inside them, again.
+/// Like JetBrains, different tests run side by side, and running tests that
+/// are still running asks to stop and rerun them. Each run title writes to
+/// its own output channel, and recent runs are remembered so the Tests pane
+/// can run them, or tests inside them, again.
 class TestRunService {
   TestRunService(
     this.context,
@@ -25,8 +26,12 @@ class TestRunService {
     this.flushInterval = const Duration(milliseconds: 100),
   });
 
-  /// Runs remembered for rerunning from the Tests pane.
-  static const maxRememberedRuns = 5;
+  /// Runs remembered for rerunning from the Tests pane, as many as Lumide
+  /// keeps.
+  static const maxRememberedRuns = 10;
+
+  /// Output channels kept for reuse by later runs with the same title.
+  static const maxOutputChannels = 10;
 
   final LumideContext context;
   final ProjectService projectService;
@@ -36,11 +41,11 @@ class TestRunService {
   /// How often results and output are sent to Lumide while tests run.
   final Duration flushInterval;
 
-  _ActiveRun? _active;
+  final Map<String, _ActiveRun> _active = {};
   final Map<String, _RunRecord> _records = {};
-  Future<LumideOutputChannel?>? _output;
+  final Map<String, LumideOutputChannel> _channels = {};
 
-  bool get isRunning => _active != null;
+  bool get isRunning => _active.isNotEmpty;
 
   /// Runs all tests in the current project.
   Future<void> runAll() => run();
@@ -126,10 +131,27 @@ class TestRunService {
     );
   }
 
-  /// Stops the running tests, if any.
-  Future<void> stop() async {
-    final active = _active;
-    if (active == null) return;
+  /// Stops the run named by `runId`, or every running run without one.
+  Future<void> stop([Map<String, dynamic>? args]) async {
+    final runs = switch (args?['runId']) {
+      final String runId => [
+          if (_lookup(_active, runId) case final active?) active,
+        ],
+      _ => _active.values.toList(),
+    };
+    await Future.wait(runs.map(_stopRun));
+  }
+
+  Future<void> dispose() async {
+    await stop();
+    final channels = _channels.values.toList();
+    _channels.clear();
+    for (final channel in channels) {
+      await _disposeChannel(channel);
+    }
+  }
+
+  Future<void> _stopRun(_ActiveRun active) async {
     active.cancelled = true;
     await active.process.kill();
     await active.done.future.timeout(
@@ -138,15 +160,11 @@ class TestRunService {
     );
   }
 
-  Future<void> dispose() => stop();
-
   Future<void> _start(
     TestInvocation invocation, {
     String? title,
     List<String> toolArgs = const [],
   }) async {
-    await stop();
-
     final firstFile = invocation.files.firstOrNull;
     final String root;
     try {
@@ -166,7 +184,10 @@ class TestRunService {
     final selection = invocation.arguments(root);
     final arguments = ['test', '--machine', ...toolArgs, ...selection];
     final runTitle = title ?? _defaultTitle(invocation, root);
-    final output = await _outputChannel();
+    final key = [root, ...arguments].join('\n');
+    if (!await _stopSameTests(key, runTitle)) return;
+    final channelName = _freeChannelName(runTitle);
+    final output = await _outputChannel(channelName);
 
     final LumideTestRun testRun;
     try {
@@ -212,13 +233,15 @@ class TestRunService {
     }
 
     final active = _ActiveRun(
+      key: key,
+      channelName: channelName,
       process: process,
       testRun: testRun,
       reporter: reporter,
       output: output,
       outputBuffer: outputBuffer,
     );
-    _active = active;
+    _active[testRun.id] = active;
     active.flushTimer = Timer.periodic(flushInterval, (_) => _flush(active));
     active.stdout = process.stdout
         .transform(const LineSplitter())
@@ -230,15 +253,86 @@ class TestRunService {
     unawaited(process.exitCode.then((code) => _finish(active, code)));
   }
 
-  Future<LumideOutputChannel?> _outputChannel() {
-    return _output ??= () async {
+  /// Asks to stop running tests with the same [key] before running them
+  /// again. Returns false when the user keeps them running.
+  Future<bool> _stopSameTests(String key, String title) async {
+    final running = [
+      for (final active in _active.values)
+        if (active.key == key) active,
+    ];
+    if (running.isEmpty) return true;
+    final bool confirmed;
+    try {
+      confirmed = await context.window.showConfirmDialog(
+        '"$title" is still running. Stop it and run it again?',
+        title: 'Stop and Rerun',
+      );
+    } catch (error) {
+      logService.error('Could not confirm rerunning tests', error);
+      return false;
+    }
+    if (!confirmed) return false;
+    await Future.wait(running.map(_stopRun));
+    return true;
+  }
+
+  /// A channel name for [title] that no running run writes to.
+  String _freeChannelName(String title) {
+    final busy = {for (final active in _active.values) active.channelName};
+    var name = '$channelFlutterTests: $title';
+    for (var copy = 2; busy.contains(name); copy++) {
+      name = '$channelFlutterTests: $title ($copy)';
+    }
+    return name;
+  }
+
+  /// Reuses and clears the channel last used by [name], like rerunning in
+  /// the same JetBrains tab, or creates one.
+  Future<LumideOutputChannel?> _outputChannel(String name) async {
+    final existing = _channels.remove(name);
+    if (existing != null) {
+      _channels[name] = existing;
       try {
-        return await context.window.createOutputChannel(channelFlutterTests);
+        await existing.clear();
       } catch (error) {
-        logService.error('Could not create the test output channel', error);
-        return null;
+        logService.error('Could not clear test output', error);
       }
-    }();
+      return existing;
+    }
+
+    final LumideOutputChannel channel;
+    try {
+      channel = await context.window.createOutputChannel(name);
+    } catch (error) {
+      logService.error('Could not create the test output channel', error);
+      return null;
+    }
+    _channels[name] = channel;
+    await _evictChannels();
+    return channel;
+  }
+
+  Future<void> _evictChannels() async {
+    final busy = {for (final active in _active.values) active.channelName};
+    final idle = [
+      for (final name in _channels.keys)
+        if (!busy.contains(name)) name,
+    ];
+    var excess = _channels.length - maxOutputChannels;
+    for (final name in idle) {
+      if (excess <= 0) return;
+      final channel = _channels.remove(name);
+      if (channel != null) await _disposeChannel(channel);
+      excess--;
+    }
+  }
+
+  Future<void> _disposeChannel(LumideOutputChannel channel) async {
+    try {
+      await channel.dispose();
+    } catch (error) {
+      logService.error('Could not dispose test output', error);
+    }
   }
 
   Future<void> _writeOutput(
@@ -289,7 +383,7 @@ class TestRunService {
       logService.error('Could not end the test run', error);
     }
     _records[active.testRun.id]?.compact();
-    if (identical(_active, active)) _active = null;
+    _active.remove(active.testRun.id);
     active.done.complete();
   }
 
@@ -301,13 +395,15 @@ class TestRunService {
     }
   }
 
+  _RunRecord? _recordFor(String runId) => _lookup(_records, runId);
+
   /// Lumide may prefix run ids with the plugin id (`lumide_flutter:run-1`).
-  _RunRecord? _recordFor(String runId) {
-    final direct = _records[runId];
+  T? _lookup<T>(Map<String, T> byRunId, String runId) {
+    final direct = byRunId[runId];
     if (direct != null) return direct;
     final separator = runId.lastIndexOf(':');
     if (separator < 0) return null;
-    return _records[runId.substring(separator + 1)];
+    return byRunId[runId.substring(separator + 1)];
   }
 
   String _defaultTitle(TestInvocation invocation, String root) {
@@ -373,6 +469,8 @@ class _RunRecord {
 
 class _ActiveRun {
   _ActiveRun({
+    required this.key,
+    required this.channelName,
     required this.process,
     required this.testRun,
     required this.reporter,
@@ -380,6 +478,10 @@ class _ActiveRun {
     required this.outputBuffer,
   });
 
+  /// The project root and arguments; runs with the same key run the same
+  /// tests.
+  final String key;
+  final String channelName;
   final SdkProcess process;
   final LumideTestRun testRun;
   final TestMachineReporter reporter;

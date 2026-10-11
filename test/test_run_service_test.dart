@@ -72,19 +72,54 @@ void main() {
     expect(service.isRunning, isFalse);
   });
 
-  test('a new run stops the previous one', () async {
-    await service.run();
+  test('different tests run side by side', () async {
+    await service.run(target: '/project/test/a_test.dart');
     final first = sdkManager.process;
+    await service.run(target: '/project/test/b_test.dart');
+
+    expect(first.killed, isFalse);
+    expect(context.window.confirmations, isEmpty);
+    expect(context.tests.runs, hasLength(2));
+    expect(service.isRunning, isTrue);
+  });
+
+  test('running tests that are still running asks to stop them', () async {
+    await service.run(target: '/project/test/a_test.dart');
+    final first = sdkManager.process;
+
+    context.window.confirmResult = false;
+    await service.run(target: '/project/test/a_test.dart');
+    expect(first.killed, isFalse);
+    expect(context.tests.runs, hasLength(1));
+
+    context.window.confirmResult = true;
+    unawaited(Future<void>.delayed(
+      const Duration(milliseconds: 5),
+      () => first.exit(-15),
+    ));
+    await service.run(target: '/project/test/a_test.dart');
+
+    expect(context.window.confirmations, hasLength(2));
+    expect(first.killed, isTrue);
+    expect(context.tests.runs.first.summary, startsWith('Stopped.'));
+    expect(context.tests.runs, hasLength(2));
+  });
+
+  test('stop with a run id stops only that run', () async {
+    await service.run(target: '/project/test/a_test.dart');
+    final first = sdkManager.process;
+    await service.run(target: '/project/test/b_test.dart');
+    final second = sdkManager.process;
 
     unawaited(Future<void>.delayed(
       const Duration(milliseconds: 5),
       () => first.exit(-15),
     ));
-    await service.run();
+    await service.stop({'runId': 'lumide_flutter:run-1'});
 
     expect(first.killed, isTrue);
-    expect(context.tests.runs.first.summary, startsWith('Stopped.'));
-    expect(context.tests.runs, hasLength(2));
+    expect(second.killed, isFalse);
+    expect(service.isRunning, isTrue);
   });
 
   Future<void> emitMathRun(_Process process) async {
@@ -145,7 +180,8 @@ void main() {
     expect(run.title, 'math adds');
     expect(run.runCommand, 'flutter.rerunTests');
     expect(run.stopCommand, 'flutter.stopTests');
-    expect(run.output, same(context.window.channel));
+    expect(
+        run.output, same(context.window.channels['Flutter Tests: math adds']));
   });
 
   test('a name without a kind also runs the tests inside a group', () async {
@@ -214,23 +250,44 @@ void main() {
     expect(context.tests.runs, hasLength(1));
   });
 
-  test('writes the command line, output, and summary to one channel', () async {
+  test('writes the command line, output, and summary to the run channel',
+      () async {
     await service.run(target: '/project/test/math_test.dart');
     sdkManager.process
       ..emitLine('Resolving dependencies...')
       ..emitStderr('warning: slow');
     await emitMathRun(sdkManager.process);
-    await service.run();
-    sdkManager.process.exit(0);
-    await Future<void>.delayed(const Duration(milliseconds: 20));
 
-    final output = context.window.channel.lines.join('\n');
-    expect(context.window.created, 1);
+    final channel = context
+        .window.channels['Flutter Tests: flutter test test/math_test.dart'];
+    final output = channel?.lines.join('\n');
     expect(output, contains(r'$ flutter test --machine test/math_test.dart'));
     expect(output, contains('Resolving dependencies...'));
     expect(output, contains('warning: slow'));
     expect(output, contains('2 passed'));
-    expect(output, contains(r'$ flutter test --machine'));
+  });
+
+  test('a rerun reuses and clears its channel; parallel runs get their own',
+      () async {
+    await service.run(target: '/project/test/math_test.dart');
+    await emitMathRun(sdkManager.process);
+    await service.rerun({'runId': 'run-1', 'testIds': <String>[]});
+    await service.runFile({
+      'uri': 'file:///project/test/math_test.dart',
+      'name': 'flutter test test/math_test.dart',
+    });
+
+    final window = context.window;
+    expect(window.created, 2);
+    expect(window.channels.keys, [
+      'Flutter Tests: flutter test test/math_test.dart',
+      'Flutter Tests: flutter test test/math_test.dart (2)',
+    ]);
+    expect(
+      window.channels.values.first.cleared,
+      1,
+      reason: 'the rerun starts with an empty channel',
+    );
   });
 }
 
@@ -344,20 +401,35 @@ class _Tests implements LumideTests {
 }
 
 class _Channel implements LumideOutputChannel {
+  _Channel(this.id);
+
   final lines = <String>[];
+  int cleared = 0;
+  bool disposed = false;
 
   @override
-  String get id => 'tests-channel';
+  final String id;
 
   @override
   Future<void> appendLine(String value) async => lines.add(value);
+
+  @override
+  Future<void> clear() async {
+    cleared++;
+    lines.clear();
+  }
+
+  @override
+  Future<void> dispose() async => disposed = true;
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 class _Window implements LumideWindow {
-  final channel = _Channel();
+  final channels = <String, _Channel>{};
+  final confirmations = <String>[];
+  bool confirmResult = true;
   int created = 0;
 
   @override
@@ -366,7 +438,13 @@ class _Window implements LumideWindow {
     int? maxEntries,
   }) async {
     created++;
-    return channel;
+    return channels[name] = _Channel('channel-$created');
+  }
+
+  @override
+  Future<bool> showConfirmDialog(String message, {String? title}) async {
+    confirmations.add(message);
+    return confirmResult;
   }
 
   @override
