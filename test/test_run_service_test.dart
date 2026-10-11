@@ -167,7 +167,12 @@ class _Tests implements LumideTests {
   final runs = <_Run>[];
 
   @override
-  Future<LumideTestRun> createRun({required String title}) async {
+  Future<LumideTestRun> createRun({
+    required String title,
+    LumideOutputChannel? output,
+    String? runCommand,
+    String? stopCommand,
+  }) async {
     final run = _Run(title);
     runs.add(run);
     return run;
