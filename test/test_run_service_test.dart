@@ -6,6 +6,7 @@ import 'package:lumide_flutter/src/services/log_service.dart';
 import 'package:lumide_flutter/src/services/project_service.dart';
 import 'package:lumide_flutter/src/services/sdk_manager.dart';
 import 'package:lumide_flutter/src/services/sdk_process.dart';
+import 'package:lumide_flutter/src/services/test_debugger.dart';
 import 'package:lumide_flutter/src/services/test_run_service.dart';
 import 'package:test/test.dart';
 
@@ -289,6 +290,80 @@ void main() {
       reason: 'the rerun starts with an empty channel',
     );
   });
+
+  test('debugs one test file in the debugger', () async {
+    final debugger = _Debugger();
+    service.debugger = debugger;
+    await service.runFile({
+      'uri': 'file:///project/test/a_test.dart',
+      'name': 'adds',
+      'kind': 'test',
+    }, true);
+
+    expect(sdkManager.arguments, [
+      'test',
+      '--machine',
+      '--start-paused',
+      '--name',
+      r'^adds$',
+      'test/a_test.dart',
+    ]);
+    final run = context.tests.runs.single;
+    expect(run.debugCommand, 'flutter.debugTests');
+
+    final process = sdkManager.process;
+    process.emitLine(
+      '[{"event":"test.startedProcess",'
+      '"params":{"vmServiceUri":"http://127.0.0.1:8181/token=/"}}]',
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    expect(debugger.attached, ['http://127.0.0.1:8181/token=/']);
+    expect(context.window.channels.values.single.lines.join(),
+        isNot(contains('startedProcess')));
+
+    unawaited(Future<void>.delayed(
+      const Duration(milliseconds: 5),
+      () => process.exit(-15),
+    ));
+    await debugger.stop?.call();
+    expect(process.killed, isTrue);
+    expect(debugger.ended, [-15]);
+  });
+
+  test('debugging needs one test file and a free debugger', () async {
+    final debugger = _Debugger();
+    service.debugger = debugger;
+
+    await service.runFile({'uri': 'file:///project/test'}, true);
+    expect(context.window.messages.single, contains('one test file'));
+
+    debugger.isBusy = true;
+    await service.runFile({'uri': 'file:///project/test/a_test.dart'}, true);
+    expect(context.tests.runs, isEmpty);
+  });
+}
+
+class _Debugger implements TestDebugger {
+  bool isBusy = false;
+  Future<void> Function()? stop;
+  final attached = <String>[];
+  final ended = <int>[];
+
+  @override
+  Future<bool> beginTestDebugging({
+    required Future<void> Function() stop,
+  }) async {
+    if (isBusy) return false;
+    this.stop = stop;
+    return true;
+  }
+
+  @override
+  Future<void> attachTestVmService(String vmServiceUri) async =>
+      attached.add(vmServiceUri);
+
+  @override
+  Future<void> endTestDebugging(int exitCode) async => ended.add(exitCode);
 }
 
 class _Process implements SdkProcess {
@@ -358,6 +433,7 @@ class _Run implements LumideTestRun {
     this.title, {
     this.output,
     this.runCommand,
+    this.debugCommand,
     this.stopCommand,
   });
 
@@ -366,6 +442,7 @@ class _Run implements LumideTestRun {
   final String title;
   final LumideOutputChannel? output;
   final String? runCommand;
+  final String? debugCommand;
   final String? stopCommand;
   final results = <LumideTestResult>[];
   String? summary;
@@ -386,6 +463,7 @@ class _Tests implements LumideTests {
     required String title,
     LumideOutputChannel? output,
     String? runCommand,
+    String? debugCommand,
     String? stopCommand,
   }) async {
     final run = _Run(
@@ -393,6 +471,7 @@ class _Tests implements LumideTests {
       title,
       output: output,
       runCommand: runCommand,
+      debugCommand: debugCommand,
       stopCommand: stopCommand,
     );
     runs.add(run);
@@ -429,6 +508,7 @@ class _Channel implements LumideOutputChannel {
 class _Window implements LumideWindow {
   final channels = <String, _Channel>{};
   final confirmations = <String>[];
+  final messages = <String>[];
   bool confirmResult = true;
   int created = 0;
 
@@ -440,6 +520,14 @@ class _Window implements LumideWindow {
     created++;
     return channels[name] = _Channel('channel-$created');
   }
+
+  @override
+  Future<void> showMessage(
+    String message, {
+    MessageType type = MessageType.info,
+    String? title,
+  }) async =>
+      messages.add(message);
 
   @override
   Future<bool> showConfirmDialog(String message, {String? title}) async {

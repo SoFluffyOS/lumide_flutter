@@ -78,6 +78,7 @@ class FlutterPlugin extends LumidePlugin {
     testRunService =
         TestRunService(context, projectService, sdkManager, logService);
     runService.onTestLaunch = testRunService.run;
+    testRunService.debugger = runService;
     pubGetOnSave = PubGetOnSave(
       isEnabled: () async =>
           await context.workspace.getConfiguration(confPubGetOnPubspecSave)
@@ -394,6 +395,16 @@ class FlutterPlugin extends LumidePlugin {
         id: cmdFlutterRerunTests,
         title: flutterCommandTitle(cmdFlutterRerunTests),
         callback: ([args]) => testRunService.rerun(args),
+      ),
+      context.commands.registerCommand(
+        id: cmdFlutterDebugTestFile,
+        title: flutterCommandTitle(cmdFlutterDebugTestFile),
+        callback: ([args]) => testRunService.runFile(args, true),
+      ),
+      context.commands.registerCommand(
+        id: cmdFlutterDebugTests,
+        title: flutterCommandTitle(cmdFlutterDebugTests),
+        callback: ([args]) => testRunService.rerun(args, true),
       ),
       context.commands.registerCommand(
         id: cmdFlutterTools,

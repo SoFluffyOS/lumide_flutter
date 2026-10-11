@@ -121,6 +121,9 @@ contributes:
     - id: flutter.testFile
       title: 'Flutter: Run Tests in File'
       category: 'Flutter'
+    - id: flutter.debugTestFile
+      title: 'Flutter: Debug Tests in File'
+      category: 'Flutter'
     - id: flutter.stopTests
       title: 'Flutter: Stop Tests'
       category: 'Flutter'

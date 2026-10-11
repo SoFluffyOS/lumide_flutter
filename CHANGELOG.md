@@ -5,6 +5,7 @@
 - Run tests and see results in Lumide's Tests pane (*).
 - Support logpoints (*).
 - Run a single test or group from its code lens, and rerun all, failed, or any test from the Tests pane (**).
+- Debug tests from a code lens, the Tests pane, or **Flutter: Debug Tests in File** (**).
 
 ### ✨ Enhancements
 

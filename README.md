@@ -28,6 +28,7 @@ Use the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`).
 | `flutter.selectTarget` | Choose the Dart entry point |
 | `flutter.hotReload` / `flutter.hotRestart` | Apply code changes or reset state |
 | `flutter.test` / `flutter.testFile` / `flutter.stopTests` | Run all tests, the current file's tests, or stop |
+| `flutter.debugTestFile` | Debug the current file's tests |
 | `flutter.devtools.<page>` | Open one DevTools page |
 | `flutter.toggleWidgetInspector` | Click a widget and open its source |
 | `flutter.togglePerformanceOverlay` | Toggle the runtime overlay |
@@ -43,7 +44,9 @@ Saving a `pubspec.yaml` runs `pub get` for that package. Configure it with `flut
 
 Run all tests, a file, or a folder from the Command Palette or the file tree. Results show in Lumide's Tests pane, and each run's output goes to its own **Flutter Tests** output channel.
 
-Click **Run** above a `test`, `testWidgets`, or `group` to run just that one. In the Tests pane, rerun the whole run, only failed tests, or any suite, group, or test. Different tests run side by side, each in its own Tests pane, and running tests that are still running asks to stop them first. Requires Lumide 0.24.0 and later.
+Click **Run** above a `test`, `testWidgets`, or `group` to run just that one. In the Tests pane, rerun the whole run, only failed tests, or any suite, group, or test. Different tests run side by side, each in its own Tests pane, and running tests that are still running asks to stop them first.
+
+Click **Debug** above a test, or the debug button on a Tests pane row, to stop at breakpoints. Debugging runs one test file at a time, and not while an app is running. Requires Lumide 0.24.0 and later.
 
 ## Logpoints
 

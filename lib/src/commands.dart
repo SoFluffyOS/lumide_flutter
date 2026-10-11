@@ -6,6 +6,7 @@ import 'package:lumide_flutter/src/services/devtools_page.dart';
 const Set<String> internalFlutterCommands = {
   cmdFlutterRunFile,
   cmdFlutterRerunTests,
+  cmdFlutterDebugTests,
 };
 
 /// Titles for every command the plugin registers, keyed by command id.
@@ -31,6 +32,8 @@ final Map<String, String> flutterCommandTitles = {
   cmdFlutterTestFile: 'Flutter: Run Tests in File',
   cmdFlutterStopTests: 'Flutter: Stop Tests',
   cmdFlutterRerunTests: 'Flutter: Rerun Tests',
+  cmdFlutterDebugTestFile: 'Flutter: Debug Tests in File',
+  cmdFlutterDebugTests: 'Flutter: Debug Tests',
   cmdFlutterRun: 'Flutter: Run',
   cmdFlutterDebug: 'Flutter: Debug',
   cmdFlutterAttach: 'Flutter: Attach',

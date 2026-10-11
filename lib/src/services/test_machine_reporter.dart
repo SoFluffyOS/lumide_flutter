@@ -12,12 +12,18 @@ import 'package:path/path.dart' as path;
 /// Group and suite states are rolled up from their tests by [finish].
 ///
 /// Output that is not a reporter event, tests' `print` messages, and errors
-/// go to [onOutput].
+/// go to [onOutput]. With `--start-paused`, the test process's VM service
+/// goes to [onStartedProcess].
 class TestMachineReporter {
-  TestMachineReporter({required this.projectRoot, this.onOutput});
+  TestMachineReporter({
+    required this.projectRoot,
+    this.onOutput,
+    this.onStartedProcess,
+  });
 
   final String projectRoot;
   final void Function(String text)? onOutput;
+  final void Function(String vmServiceUri)? onStartedProcess;
 
   final Map<int, _Suite> _suites = {};
   final Map<int, _Group> _groups = {};
@@ -48,6 +54,7 @@ class TestMachineReporter {
   void addLine(String line) {
     final trimmed = line.trim();
     if (trimmed.isEmpty) return;
+    if (_handleToolEvent(trimmed)) return;
     final event = _decodeEvent(trimmed);
     if (event == null) {
       onOutput?.call(line);
@@ -114,6 +121,25 @@ class TestMachineReporter {
     final suite = _suites[suiteId];
     if (suite == null) return null;
     return build(_absolutePath(suite.path));
+  }
+
+  /// Handles `flutter test`'s own events, which are wrapped in brackets.
+  bool _handleToolEvent(String line) {
+    if (!line.startsWith('[{')) return false;
+    final Object? decoded;
+    try {
+      decoded = jsonDecode(line);
+    } on FormatException {
+      return false;
+    }
+    if (decoded
+        case [{'event': 'test.startedProcess', 'params': final Map params}]) {
+      if (params['vmServiceUri'] case final String uri when uri.isNotEmpty) {
+        onStartedProcess?.call(uri);
+      }
+      return true;
+    }
+    return false;
   }
 
   Map<dynamic, dynamic>? _decodeEvent(String line) {

@@ -18,6 +18,7 @@ export 'sdk_manager.dart';
 export 'sdk_process.dart';
 export 'status_bar_service.dart';
 export 'target_service.dart';
+export 'test_debugger.dart';
 export 'test_machine_reporter.dart';
 export 'test_run_service.dart';
 export 'test_selection.dart';

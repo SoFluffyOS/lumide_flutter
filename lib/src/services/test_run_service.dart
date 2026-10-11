@@ -7,6 +7,7 @@ import 'package:lumide_flutter/src/services/log_service.dart';
 import 'package:lumide_flutter/src/services/project_service.dart';
 import 'package:lumide_flutter/src/services/sdk_manager.dart';
 import 'package:lumide_flutter/src/services/sdk_process.dart';
+import 'package:lumide_flutter/src/services/test_debugger.dart';
 import 'package:lumide_flutter/src/services/test_machine_reporter.dart';
 import 'package:lumide_flutter/src/services/test_selection.dart';
 import 'package:path/path.dart' as path;
@@ -45,6 +46,9 @@ class TestRunService {
   final Map<String, _RunRecord> _records = {};
   final Map<String, LumideOutputChannel> _channels = {};
 
+  /// Debugs tests started with `debug: true`.
+  TestDebugger? debugger;
+
   bool get isRunning => _active.isNotEmpty;
 
   /// Runs all tests in the current project.
@@ -54,8 +58,9 @@ class TestRunService {
   /// passed by a menu as `uri`/`path`.
   ///
   /// A `name` runs only the test or group with that full name; `kind: test`
-  /// excludes tests whose names merely start with it.
-  Future<void> runFile([Map<String, dynamic>? args]) async {
+  /// excludes tests whose names merely start with it. With [debug], the
+  /// tests run in the debugger.
+  Future<void> runFile([Map<String, dynamic>? args, bool debug = false]) async {
     final target = _pathFromArgs(args) ?? await _activeDocumentPath();
     if (target == null) {
       await context.window.showMessage(
@@ -66,7 +71,7 @@ class TestRunService {
     }
     final name = args?['name'];
     if (name is! String || name.isEmpty) {
-      await run(target: target);
+      await _start(TestInvocation(files: [target]), debug: debug);
       return;
     }
     await _start(
@@ -78,6 +83,7 @@ class TestRunService {
         ),
       ),
       title: name,
+      debug: debug,
     );
   }
 
@@ -91,7 +97,7 @@ class TestRunService {
   /// Runs a remembered run again, or the tests in it named by `testIds`.
   ///
   /// Called by Lumide's Tests pane with `{'runId': ..., 'testIds': [...]}`.
-  Future<void> rerun([Map<String, dynamic>? args]) async {
+  Future<void> rerun([Map<String, dynamic>? args, bool debug = false]) async {
     final runId = args?['runId'];
     final record = switch (runId) {
       final String id => _recordFor(id),
@@ -110,6 +116,7 @@ class TestRunService {
         record.invocation,
         title: record.title,
         toolArgs: record.toolArgs,
+        debug: debug,
       );
       return;
     }
@@ -128,6 +135,7 @@ class TestRunService {
       invocationFor(targets),
       title: _titleFor(targets),
       toolArgs: record.toolArgs,
+      debug: debug,
     );
   }
 
@@ -164,7 +172,13 @@ class TestRunService {
     TestInvocation invocation, {
     String? title,
     List<String> toolArgs = const [],
+    bool debug = false,
   }) async {
+    final debugger = switch (debug) {
+      true => this.debugger,
+      false => null,
+    };
+    if (debug && !await _canDebug(invocation, debugger)) return;
     final firstFile = invocation.files.firstOrNull;
     final String root;
     try {
@@ -182,22 +196,35 @@ class TestRunService {
     }
 
     final selection = invocation.arguments(root);
-    final arguments = ['test', '--machine', ...toolArgs, ...selection];
+    final arguments = [
+      'test',
+      '--machine',
+      if (debugger != null) '--start-paused',
+      ...toolArgs,
+      ...selection,
+    ];
     final runTitle = title ?? _defaultTitle(invocation, root);
     final key = [root, ...arguments].join('\n');
     if (!await _stopSameTests(key, runTitle)) return;
+    late final LumideTestRun testRun;
+    final isDebugging = await debugger?.beginTestDebugging(
+          stop: () => stop({'runId': testRun.id}),
+        ) ??
+        false;
+    if (debugger != null && !isDebugging) return;
     final channelName = _freeChannelName(runTitle);
     final output = await _outputChannel(channelName);
 
-    final LumideTestRun testRun;
     try {
       testRun = await context.tests.createRun(
         title: runTitle,
         output: output,
         runCommand: cmdFlutterRerunTests,
+        debugCommand: cmdFlutterDebugTests,
         stopCommand: cmdFlutterStopTests,
       );
     } catch (error) {
+      await debugger?.endTestDebugging(-1);
       await context.window.showMessage(
         'Running tests requires Lumide 0.23.0 or later.',
         type: MessageType.warning,
@@ -210,6 +237,11 @@ class TestRunService {
     final reporter = TestMachineReporter(
       projectRoot: root,
       onOutput: outputBuffer.add,
+      onStartedProcess: switch (debugger) {
+        final debugger? => (uri) =>
+            unawaited(debugger.attachTestVmService(uri)),
+        null => null,
+      },
     );
     _remember(
       testRun.id,
@@ -225,6 +257,7 @@ class TestRunService {
     try {
       process = await sdkManager.startFlutter(root, arguments);
     } catch (error) {
+      await debugger?.endTestDebugging(-1);
       outputBuffer.add('Could not start flutter test: $error');
       await _writeOutput(output, outputBuffer);
       await testRun.end(summary: 'Could not start flutter test: $error');
@@ -235,6 +268,7 @@ class TestRunService {
     final active = _ActiveRun(
       key: key,
       channelName: channelName,
+      debugger: debugger,
       process: process,
       testRun: testRun,
       reporter: reporter,
@@ -251,6 +285,21 @@ class TestRunService {
       outputBuffer.add(text.trimRight());
     });
     unawaited(process.exitCode.then((code) => _finish(active, code)));
+  }
+
+  /// `flutter test --start-paused` debugs one test file at a time.
+  Future<bool> _canDebug(
+    TestInvocation invocation,
+    TestDebugger? debugger,
+  ) async {
+    final message = switch ((debugger, invocation.files)) {
+      (null, _) => 'Debugging tests is not available.',
+      (_, [final file]) when file.endsWith('.dart') => null,
+      _ => 'Debug tests from one test file at a time.',
+    };
+    if (message == null) return true;
+    await context.window.showMessage(message, type: MessageType.warning);
+    return false;
   }
 
   /// Asks to stop running tests with the same [key] before running them
@@ -384,6 +433,7 @@ class TestRunService {
     }
     _records[active.testRun.id]?.compact();
     _active.remove(active.testRun.id);
+    await active.debugger?.endTestDebugging(exitCode);
     active.done.complete();
   }
 
@@ -471,6 +521,7 @@ class _ActiveRun {
   _ActiveRun({
     required this.key,
     required this.channelName,
+    required this.debugger,
     required this.process,
     required this.testRun,
     required this.reporter,
@@ -482,6 +533,9 @@ class _ActiveRun {
   /// tests.
   final String key;
   final String channelName;
+
+  /// Set while the run is debugged.
+  final TestDebugger? debugger;
   final SdkProcess process;
   final LumideTestRun testRun;
   final TestMachineReporter reporter;

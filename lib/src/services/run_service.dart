@@ -5,6 +5,7 @@ import 'package:lumide_api/lumide_api.dart';
 import 'package:lumide_flutter/src/constants.dart';
 import 'package:lumide_flutter/src/services/services.dart';
 import 'package:path/path.dart' as path;
+import 'package:vm_service/utils.dart';
 import 'package:vm_service/vm_service.dart';
 import 'package:vm_service/vm_service_io.dart';
 
@@ -38,7 +39,7 @@ class _VariableReferenceEntry {
   final String? evaluateName;
 }
 
-class RunService {
+class RunService implements TestDebugger {
   static const String _debugSessionId = 'flutter.debug.session';
   static const String _debugSessionName = 'Flutter Debug';
   static const LumideDebugCapabilities _debugCapabilities =
@@ -74,6 +75,9 @@ class RunService {
   StreamSubscription<String>? _stderrSub;
   bool _isRunning = false;
   bool _isLaunching = false;
+
+  /// Stops the `flutter test` process while tests are debugged.
+  Future<void> Function()? _stopDebuggedTests;
   bool _openPerformanceOnConnect = false;
   bool get isRunning => _isRunning;
 
@@ -1159,7 +1163,8 @@ class RunService {
 
   Future<void> _loadFlavorCache() async {
     try {
-      final cached = await launchOptionsStore.read(LaunchOptionsStore.flavorKey);
+      final cached =
+          await launchOptionsStore.read(LaunchOptionsStore.flavorKey);
       if (cached == null) return;
       final flavor = cached.trim();
       _selectedFlavor = flavor.isEmpty ? null : flavor;
@@ -1964,7 +1969,8 @@ class RunService {
         expression,
         disableBreakpoints: true,
       );
-      if (result case InstanceRef(kind: InstanceKind.kBool, :final valueAsString)) {
+      if (result
+          case InstanceRef(kind: InstanceKind.kBool, :final valueAsString)) {
         return valueAsString == 'true';
       }
       if (_reportedBrokenConditions.add(expression)) {
@@ -3093,7 +3099,47 @@ class RunService {
     }
   }
 
+  @override
+  Future<bool> beginTestDebugging({
+    required Future<void> Function() stop,
+  }) async {
+    if (_isRunning || _isLaunching) {
+      await context.window.showMessage(
+        'Stop the running Flutter app before debugging tests.',
+        type: MessageType.warning,
+      );
+      return false;
+    }
+    _stopDebuggedTests = stop;
+    _isRunning = true;
+    await _prepareForLaunch(_FlutterLaunchMode.debug);
+    return true;
+  }
+
+  @override
+  Future<void> attachTestVmService(String vmServiceUri) async {
+    if (_stopDebuggedTests == null) return;
+    final webSocketUri = convertToWebSocketUrl(
+      serviceProtocolUrl: Uri.parse(vmServiceUri),
+    );
+    await _connectToVmService(webSocketUri.toString());
+  }
+
+  @override
+  Future<void> endTestDebugging(int exitCode) async {
+    if (_stopDebuggedTests == null) return;
+    _stopDebuggedTests = null;
+    _isRunning = false;
+    _launchMode = null;
+    await _disconnectVmService();
+    await _endDebugSession(statusMessage: 'Tests exited with code $exitCode.');
+  }
+
   Future<void> stop() async {
+    if (_stopDebuggedTests case final stopTests?) {
+      await stopTests();
+      return;
+    }
     if (!_isRunning || _process == null) return;
 
     final confirm = await context.window.showConfirmDialog(
