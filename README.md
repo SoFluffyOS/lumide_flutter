@@ -41,9 +41,9 @@ Saving a `pubspec.yaml` runs `pub get` for that package. Configure it with `flut
 
 ## Tests
 
-Run all tests, a file, or a folder from the Command Palette or the file tree. Results show in Lumide's Tests pane and output goes to the **Flutter Tests** output channel.
+Run all tests, a file, or a folder from the Command Palette or the file tree. Results show in Lumide's Tests pane, and each run's output goes to its own **Flutter Tests** output channel.
 
-Click **Run** above a `test`, `testWidgets`, or `group` to run just that one. In the Tests pane, rerun the whole run, only failed tests, or any suite, group, or test. Requires Lumide 0.24.0 and later.
+Click **Run** above a `test`, `testWidgets`, or `group` to run just that one. In the Tests pane, rerun the whole run, only failed tests, or any suite, group, or test. Different tests run side by side, each in its own Tests pane, and running tests that are still running asks to stop them first. Requires Lumide 0.24.0 and later.
 
 ## Logpoints
 

@@ -9,7 +9,8 @@
 ### ✨ Enhancements
 
 - Start `flutter run` and the Flutter daemon through Lumide's SDK manager.
-- Show test output in the Flutter Tests output channel.
+- Show each test run's output in its own output channel.
+- Run different tests at the same time. Running tests that are still running asks to stop them first (**).
 
 > (*) Note: These features require Lumide 0.23.0 and later.
 >
