@@ -175,10 +175,14 @@ class TestRunService {
   Future<void> _stopRun(_ActiveRun active) async {
     active.cancelled = true;
     await active.process.kill();
-    await active.done.future.timeout(
-      const Duration(seconds: 5),
-      onTimeout: () => active.process.kill(force: true),
-    );
+    const grace = Duration(seconds: 5);
+    try {
+      await active.done.future.timeout(grace);
+    } on TimeoutException {
+      await active.process.kill(force: true);
+      // Wait for the run to finish, so a rerun does not race its cleanup.
+      await active.done.future.timeout(grace, onTimeout: () {});
+    }
   }
 
   Future<void> _start(
@@ -219,21 +223,39 @@ class TestRunService {
     final runTitle = title ?? _defaultTitle(invocation, root, toolArgs);
     final key = [root, ...arguments].join('\n');
     if (!await _stopSameTests(key, runTitle)) return;
-    late final LumideTestRun testRun;
+    final coverage = await _coverageFor(root, toolArgs);
+    if (coverage case (path: final reportPath, isOwn: true)) {
+      arguments.insert(2, '--coverage-path=$reportPath');
+    }
+
+    // The debug toolbar can stop the session before the run starts.
+    var isStopRequested = false;
+    String? startedRunId;
     final isDebugging = await debugger?.beginTestDebugging(
-          stop: () => stop({'runId': testRun.id}),
+          stop: () async {
+            final runId = startedRunId;
+            if (runId == null) {
+              isStopRequested = true;
+              return;
+            }
+            await stop({'runId': runId});
+          },
         ) ??
         false;
     if (debugger != null && !isDebugging) return;
     final channelName = _freeChannelName(runTitle);
     final output = await _outputChannel(channelName);
 
+    final LumideTestRun testRun;
     try {
       testRun = await context.tests.createRun(
         title: runTitle,
         output: output,
         runCommand: cmdFlutterRerunTests,
-        debugCommand: cmdFlutterDebugTests,
+        debugCommand: switch (_isOneTestFile(invocation)) {
+          true => cmdFlutterDebugTests,
+          false => null,
+        },
         stopCommand: cmdFlutterStopTests,
       );
     } catch (error) {
@@ -266,6 +288,12 @@ class TestRunService {
       ),
     );
 
+    if (isStopRequested) {
+      await debugger?.endTestDebugging(-1);
+      await testRun.end(summary: 'Stopped.');
+      return;
+    }
+
     final SdkProcess process;
     try {
       process = await sdkManager.startFlutter(root, arguments);
@@ -281,7 +309,7 @@ class TestRunService {
     final active = _ActiveRun(
       key: key,
       root: root,
-      reportsCoverage: toolArgs.contains(_coverageFlag),
+      coveragePath: coverage?.path,
       channelName: channelName,
       debugger: debugger,
       process: process,
@@ -300,6 +328,50 @@ class TestRunService {
       outputBuffer.add(text.trimRight());
     });
     unawaited(process.exitCode.then((code) => _finish(active, code)));
+    startedRunId = testRun.id;
+    if (isStopRequested) await _stopRun(active);
+  }
+
+  static bool _isOneTestFile(TestInvocation invocation) =>
+      switch (invocation.files) {
+        [final file] => file.endsWith('.dart'),
+        _ => false,
+      };
+
+  /// Where a coverage run writes its report: the `--coverage-path` given in
+  /// [toolArgs], or a file of Lumide's own, cleared first so a run that
+  /// writes nothing never shows another run's coverage.
+  Future<({String path, bool isOwn})?> _coverageFor(
+    String root,
+    List<String> toolArgs,
+  ) async {
+    if (!toolArgs.contains(_coverageFlag)) return null;
+    const prefix = '--coverage-path=';
+    for (final arg in toolArgs) {
+      if (!arg.startsWith(prefix)) continue;
+      final given = arg.substring(prefix.length);
+      return (
+        path: switch (path.isAbsolute(given)) {
+          true => given,
+          false => path.join(root, given),
+        },
+        isOwn: false,
+      );
+    }
+    final busy = {for (final active in _active.values) active.coveragePath};
+    final directory = path.join(root, '.dart_tool', 'lumide_flutter');
+    for (var slot = 0;; slot++) {
+      final candidate = path.join(directory, 'coverage-$slot.info');
+      if (busy.contains(candidate)) continue;
+      try {
+        await context.fs.createDirectory(directory, recursive: true);
+        await context.fs.writeString(candidate, '');
+      } catch (error) {
+        logService.warn('Could not prepare a coverage report: $error');
+        return (path: path.join(root, 'coverage', 'lcov.info'), isOwn: false);
+      }
+      return (path: candidate, isOwn: true);
+    }
   }
 
   /// `flutter test --start-paused` debugs one test file at a time.
@@ -433,9 +505,14 @@ class TestRunService {
 
     final stderrText = active.stderrOutput.toString().trim();
     if (stderrText.isNotEmpty) logService.warn('flutter test: $stderrText');
-    final coverage = switch (active.reportsCoverage && !active.cancelled) {
-      true => await _reportCoverage(active),
-      false => null,
+    final didRunTests = exitCode == 0 || active.reporter.summary != '0 passed';
+    final coverage = switch ((active.coveragePath, active.cancelled)) {
+      (final reportPath?, false) when didRunTests => await _reportCoverage(
+          active.testRun,
+          reportPath,
+          active.root,
+        ),
+      _ => null,
     };
     final summary = switch ((active.cancelled, active.reporter.summary)) {
       (true, final counts) => 'Stopped. $counts',
@@ -459,20 +536,27 @@ class TestRunService {
 
   /// Sends `coverage/lcov.info` to the run. Returns a summary such as
   /// `82% covered`, or null when there is no report.
-  Future<String?> _reportCoverage(_ActiveRun active) async {
-    final reportPath = path.join(active.root, 'coverage', 'lcov.info');
+  Future<String?> _reportCoverage(
+    LumideTestRun testRun,
+    String reportPath,
+    String root,
+  ) async {
     final List<LumideFileCoverage> files;
     try {
       files = parseLcov(
         await context.fs.readString(reportPath),
-        projectRoot: active.root,
+        projectRoot: root,
       );
     } catch (error) {
       logService.warn('No coverage report at $reportPath: $error');
       return null;
     }
+    if (files.isEmpty) return null;
+    if (files.length >= maxCoverageFiles) {
+      logService.warn('Showing coverage for the first $maxCoverageFiles files');
+    }
     try {
-      await active.testRun.setCoverage(files);
+      await testRun.setCoverage(files);
     } catch (error) {
       logService.error('Could not send coverage', error);
       return null;
@@ -578,7 +662,7 @@ class _ActiveRun {
   _ActiveRun({
     required this.key,
     required this.root,
-    required this.reportsCoverage,
+    required this.coveragePath,
     required this.channelName,
     required this.debugger,
     required this.process,
@@ -593,8 +677,8 @@ class _ActiveRun {
   final String key;
   final String root;
 
-  /// Whether the run writes `coverage/lcov.info` to send when it ends.
-  final bool reportsCoverage;
+  /// The coverage report the run writes, sent when it ends.
+  final String? coveragePath;
   final String channelName;
 
   /// Set while the run is debugged.

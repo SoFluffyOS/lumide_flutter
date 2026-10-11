@@ -342,20 +342,42 @@ void main() {
     expect(context.tests.runs, isEmpty);
   });
 
-  test('a coverage run sends lcov coverage and reports it', () async {
-    context.fs.files['/project/coverage/lcov.info'] =
-        'SF:lib/math.dart\nDA:1,1\nDA:2,1\nDA:3,1\nDA:4,0\nend_of_record\n';
+  test('a coverage run sends its own lcov report', () async {
+    const report = '/project/.dart_tool/lumide_flutter/coverage-0.info';
+    context.fs.files[report] = 'stale';
     await service.runWithCoverage();
 
-    expect(sdkManager.arguments, ['test', '--machine', '--coverage']);
+    expect(sdkManager.arguments, [
+      'test',
+      '--machine',
+      '--coverage-path=$report',
+      '--coverage',
+    ]);
+    expect(context.fs.files[report], isEmpty);
     final run = context.tests.runs.single;
     expect(run.title, 'flutter test --coverage');
+    expect(run.debugCommand, isNull);
 
+    context.fs.files[report] =
+        'SF:lib/math.dart\nDA:1,1\nDA:2,1\nDA:3,1\nDA:4,0\nend_of_record\n';
     sdkManager.process.exit(0);
     await Future<void>.delayed(const Duration(milliseconds: 20));
     expect(run.coverage?.single.uri, 'file:///project/lib/math.dart');
     expect(run.coverage?.single.uncoveredLines, [4]);
     expect(run.summary, '0 passed, 75% covered');
+  });
+
+  test('stopping a debug session before the run starts stops it', () async {
+    final debugger = _Debugger();
+    service.debugger = debugger;
+    final window = context.window;
+    window.onCreateChannel = () async => debugger.stop?.call();
+
+    await service.runFile({'uri': 'file:///project/test/a_test.dart'}, true);
+
+    expect(context.tests.runs.single.summary, 'Stopped.');
+    expect(debugger.ended, [-1]);
+    expect(sdkManager.arguments, isEmpty);
   });
 }
 
@@ -532,6 +554,7 @@ class _Window implements LumideWindow {
   final messages = <String>[];
   bool confirmResult = true;
   int created = 0;
+  Future<void> Function()? onCreateChannel;
 
   @override
   Future<LumideOutputChannel> createOutputChannel(
@@ -539,6 +562,7 @@ class _Window implements LumideWindow {
     int? maxEntries,
   }) async {
     created++;
+    await onCreateChannel?.call();
     return channels[name] = _Channel('channel-$created');
   }
 
@@ -566,6 +590,13 @@ class _Fs implements LumideFileSystem {
   @override
   Future<String> readString(String path) async =>
       files[path] ?? (throw StateError('missing $path'));
+
+  @override
+  Future<void> writeString(String path, String content) async =>
+      files[path] = content;
+
+  @override
+  Future<void> createDirectory(String path, {bool recursive = false}) async {}
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

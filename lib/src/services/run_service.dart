@@ -840,7 +840,7 @@ class RunService implements TestDebugger {
   }) async {
     if (_isRunning || _isLaunching) {
       await context.window.showMessage(
-        'A Flutter app is already running. Stop it before starting a new one.',
+        _busyMessage('before starting a new one'),
         type: MessageType.warning,
       );
       return;
@@ -3099,20 +3099,36 @@ class RunService implements TestDebugger {
     }
   }
 
+  /// Why another launch must wait, such as 'Stop the tests being debugged
+  /// before starting a new one.'
+  String _busyMessage(String action) => switch (_stopDebuggedTests) {
+        null => 'Stop the running Flutter app $action.',
+        _ => 'Stop the tests being debugged $action.',
+      };
+
   @override
   Future<bool> beginTestDebugging({
     required Future<void> Function() stop,
   }) async {
     if (_isRunning || _isLaunching) {
       await context.window.showMessage(
-        'Stop the running Flutter app before debugging tests.',
+        _busyMessage('before debugging tests'),
         type: MessageType.warning,
       );
       return false;
     }
     _stopDebuggedTests = stop;
     _isRunning = true;
-    await _prepareForLaunch(_FlutterLaunchMode.debug);
+    try {
+      await _prepareForLaunch(_FlutterLaunchMode.debug);
+    } catch (error) {
+      _stopDebuggedTests = null;
+      _isRunning = false;
+      _launchMode = null;
+      _resetDebugRuntime();
+      await _logError('Could not start debugging tests', error);
+      return false;
+    }
     return true;
   }
 
@@ -3121,8 +3137,9 @@ class RunService implements TestDebugger {
     if (_stopDebuggedTests == null) return;
     final webSocketUri = convertToWebSocketUrl(
       serviceProtocolUrl: Uri.parse(vmServiceUri),
-    );
-    await _connectToVmService(webSocketUri.toString());
+    ).toString();
+    _wsUri = webSocketUri;
+    await _connectToVmService(webSocketUri);
   }
 
   @override
@@ -3131,6 +3148,7 @@ class RunService implements TestDebugger {
     _stopDebuggedTests = null;
     _isRunning = false;
     _launchMode = null;
+    _wsUri = null;
     await _disconnectVmService();
     await _endDebugSession(statusMessage: 'Tests exited with code $exitCode.');
   }
