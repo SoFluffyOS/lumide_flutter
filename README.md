@@ -10,7 +10,7 @@ The official Flutter extension for [Lumide IDE](https://lumide.dev).
 - Launch and switch devices, including stopped Android emulators and iOS Simulator.
 - Set targets, flavors, build modes, and launch configurations.
 - Use breakpoints, conditions, logpoints, stepping, stack frames, scopes, variables, and evaluation.
-- Run tests and see results in the Tests pane.
+- Run tests, single tests, or groups and see results in the Tests pane.
 - Open focused DevTools panes: Inspector, Performance, CPU Profiler, Memory, Network, and Logging.
 - Click a widget in the running app and jump to its Flutter source.
 - Toggle the performance overlay from the command palette.
@@ -38,6 +38,12 @@ Use the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`).
 Hot reload on save is enabled by default. Configure it with `flutter.hotReloadOnSave`.
 
 Saving a `pubspec.yaml` runs `pub get` for that package. Configure it with `flutter.pubGetOnPubspecSave`.
+
+## Tests
+
+Run all tests, a file, or a folder from the Command Palette or the file tree. Results show in Lumide's Tests pane and output goes to the **Flutter Tests** output channel.
+
+Click **Run** above a `test`, `testWidgets`, or `group` to run just that one. In the Tests pane, rerun the whole run, only failed tests, or any suite, group, or test. Requires Lumide 0.24.0 and later.
 
 ## Logpoints
 

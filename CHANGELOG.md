@@ -4,12 +4,16 @@
 
 - Run tests and see results in Lumide's Tests pane (*).
 - Support logpoints (*).
+- Run a single test or group from its code lens, and rerun all, failed, or any test from the Tests pane (**).
 
 ### ✨ Enhancements
 
 - Start `flutter run` and the Flutter daemon through Lumide's SDK manager.
+- Show test output in the Flutter Tests output channel.
 
 > (*) Note: These features require Lumide 0.23.0 and later.
+>
+> (**) Note: This feature requires Lumide 0.24.0 and later.
 
 ## 1.15.0 (2026-10-11)
 
