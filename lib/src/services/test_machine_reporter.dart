@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:lumide_api/lumide_api.dart';
+import 'package:lumide_flutter/src/services/test_selection.dart';
 import 'package:path/path.dart' as path;
 
 /// Turns `flutter test --machine` events into Tests pane results.
@@ -9,10 +10,14 @@ import 'package:path/path.dart' as path;
 /// nest under their innermost group. Hidden tests (suite loading) are not
 /// shown, but a suite that fails to load is marked errored with the error.
 /// Group and suite states are rolled up from their tests by [finish].
+///
+/// Output that is not a reporter event, tests' `print` messages, and errors
+/// go to [onOutput].
 class TestMachineReporter {
-  TestMachineReporter({required this.projectRoot});
+  TestMachineReporter({required this.projectRoot, this.onOutput});
 
   final String projectRoot;
+  final void Function(String text)? onOutput;
 
   final Map<int, _Suite> _suites = {};
   final Map<int, _Group> _groups = {};
@@ -38,17 +43,16 @@ class TestMachineReporter {
 
   bool get hasFailures => _failed > 0;
 
-  /// Handles one stdout line. Lines that are not reporter events are ignored.
+  /// Handles one stdout line. Lines that are not reporter events go to
+  /// [onOutput].
   void addLine(String line) {
     final trimmed = line.trim();
-    if (!trimmed.startsWith('{')) return;
-    final Object? event;
-    try {
-      event = jsonDecode(trimmed);
-    } on FormatException {
+    if (trimmed.isEmpty) return;
+    final event = _decodeEvent(trimmed);
+    if (event == null) {
+      onOutput?.call(line);
       return;
     }
-    if (event is! Map) return;
     switch (event['type']) {
       case 'suite':
         _onSuite(event['suite']);
@@ -60,8 +64,78 @@ class TestMachineReporter {
         _onError(event);
       case 'testDone':
         _onTestDone(event);
+      case 'print':
+        _onPrint(event);
     }
   }
+
+  /// The suite, group, or test behind a result id from this reporter.
+  TestTarget? targetOf(String resultId) {
+    final separator = resultId.indexOf(':');
+    if (separator < 0) return null;
+    final id = int.tryParse(resultId.substring(separator + 1));
+    if (id == null) return null;
+    return switch (resultId.substring(0, separator)) {
+      'suite' => switch (_suites[id]) {
+          final suite? => TestTarget.suite(_absolutePath(suite.path)),
+          null => null,
+        },
+      'group' => switch (_groups[id]) {
+          final group? when !group.isRoot => _suiteTarget(
+              group.suiteId,
+              (file) => TestTarget.group(file, group.name),
+            ),
+          _ => null,
+        },
+      'test' => switch (_tests[id]) {
+          final test? when !test.isHidden => _suiteTarget(
+              test.suiteId,
+              (file) => TestTarget.test(file, test.name),
+            ),
+          _ => null,
+        },
+      _ => null,
+    };
+  }
+
+  /// Targets for every reported result, keyed by result id.
+  Map<String, TestTarget> targets() => {
+        for (final suite in _suites.values)
+          'suite:${suite.id}': TestTarget.suite(_absolutePath(suite.path)),
+        for (final group in _groups.values)
+          if (targetOf('group:${group.id}') case final target?)
+            'group:${group.id}': target,
+        for (final test in _tests.values)
+          if (targetOf('test:${test.id}') case final target?)
+            'test:${test.id}': target,
+      };
+
+  TestTarget? _suiteTarget(int suiteId, TestTarget Function(String) build) {
+    final suite = _suites[suiteId];
+    if (suite == null) return null;
+    return build(_absolutePath(suite.path));
+  }
+
+  Map<dynamic, dynamic>? _decodeEvent(String line) {
+    if (!line.startsWith('{')) return null;
+    try {
+      final event = jsonDecode(line);
+      if (event is Map && event['type'] is String) return event;
+      return null;
+    } on FormatException {
+      return null;
+    }
+  }
+
+  void _onPrint(Map<dynamic, dynamic> event) {
+    final message = event['message']?.toString() ?? '';
+    onOutput?.call('[${_testName(event['testID'])}] $message');
+  }
+
+  String _testName(Object? testId) => switch (_tests[testId]?.name) {
+        final name? when name.isNotEmpty => name,
+        _ => 'test',
+      };
 
   /// Rolls up group and suite states, and marks unfinished tests as errored
   /// (the process exited before they completed).
@@ -158,6 +232,7 @@ class TestMachineReporter {
     final stackTrace = event['stackTrace']?.toString() ?? '';
     final details = [error, stackTrace.trim()].where((part) => part.isNotEmpty);
     final message = details.join('\n\n');
+    onOutput?.call('[${_testName(test.id)}] $message');
     test.message = switch (test.message) {
       final previous? => '$previous\n\n$message',
       _ => message,
@@ -270,12 +345,14 @@ class TestMachineReporter {
 
   String? _suiteUri(_Suite? suite) {
     if (suite == null) return null;
-    final absolute = switch (path.isAbsolute(suite.path)) {
-      true => suite.path,
-      false => path.join(projectRoot, suite.path),
-    };
-    return Uri.file(absolute).toString();
+    return Uri.file(_absolutePath(suite.path)).toString();
   }
+
+  String _absolutePath(String suitePath) =>
+      switch (path.isAbsolute(suitePath)) {
+        true => suitePath,
+        false => path.join(projectRoot, suitePath),
+      };
 
   String? _fileUri(String? url) {
     if (url == null || !url.startsWith('file:')) return null;

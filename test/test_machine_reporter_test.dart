@@ -204,4 +204,59 @@ void main() {
       ..addLine('[1, 2]');
     expect(reporter.takePending(), isEmpty);
   });
+
+  test('maps result ids to targets for rerunning', () {
+    startSuite();
+    startTest(4, 'math adds');
+    finishTest(4, 'success');
+
+    final suite = reporter.targetOf('suite:0');
+    expect(suite?.file, suitePath);
+    expect(suite?.name, isNull);
+
+    final group = reporter.targetOf('group:3');
+    expect(group?.name, 'math');
+    expect(group?.isGroup, isTrue);
+
+    final test = reporter.targetOf('test:4');
+    expect(test?.file, suitePath);
+    expect(test?.name, 'math adds');
+    expect(test?.isGroup, isFalse);
+
+    expect(reporter.targetOf('group:2'), isNull, reason: 'root group');
+    expect(reporter.targetOf('test:1'), isNull, reason: 'suite loading');
+    expect(reporter.targetOf('test:99'), isNull);
+    expect(reporter.targetOf('bogus'), isNull);
+    expect(
+      reporter.targets().keys,
+      unorderedEquals(['suite:0', 'group:3', 'test:4']),
+    );
+  });
+
+  test('sends plain lines, prints, and errors to output', () {
+    final output = <String>[];
+    reporter = TestMachineReporter(projectRoot: root, onOutput: output.add);
+    startSuite();
+    startTest(4, 'math adds');
+    reporter.addLine('Running build hooks...');
+    send({
+      'type': 'print',
+      'testID': 4,
+      'messageType': 'print',
+      'message': 'hello',
+    });
+    send({
+      'type': 'error',
+      'testID': 4,
+      'error': 'Expected: 2',
+      'stackTrace': 'math_test.dart 5:3',
+    });
+    reporter.addLine('   ');
+
+    expect(output, [
+      'Running build hooks...',
+      '[math adds] hello',
+      '[math adds] Expected: 2\n\nmath_test.dart 5:3',
+    ]);
+  });
 }

@@ -3,7 +3,10 @@ import 'package:lumide_flutter/src/services/devtools_page.dart';
 
 /// Commands registered at runtime but not listed in the Command Palette,
 /// because they only work with arguments supplied by the host.
-const Set<String> internalFlutterCommands = {cmdFlutterRunFile};
+const Set<String> internalFlutterCommands = {
+  cmdFlutterRunFile,
+  cmdFlutterRerunTests,
+};
 
 /// Titles for every command the plugin registers, keyed by command id.
 ///
@@ -27,6 +30,7 @@ final Map<String, String> flutterCommandTitles = {
   cmdFlutterTest: 'Flutter: Run Tests',
   cmdFlutterTestFile: 'Flutter: Run Tests in File',
   cmdFlutterStopTests: 'Flutter: Stop Tests',
+  cmdFlutterRerunTests: 'Flutter: Rerun Tests',
   cmdFlutterRun: 'Flutter: Run',
   cmdFlutterDebug: 'Flutter: Debug',
   cmdFlutterAttach: 'Flutter: Attach',

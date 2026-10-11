@@ -48,6 +48,7 @@ const bool defaultScanDevicesOnStartup = true;
 
 // output channels
 const String channelFlutter = 'Flutter';
+const String channelFlutterTests = 'Flutter Tests';
 
 // icons
 const String iconZap = 'zap';
@@ -99,3 +100,4 @@ const String cmdFlutterStopWidgetPreview = 'flutter.stopWidgetPreview';
 const String cmdFlutterTest = 'flutter.test';
 const String cmdFlutterTestFile = 'flutter.testFile';
 const String cmdFlutterStopTests = 'flutter.stopTests';
+const String cmdFlutterRerunTests = 'flutter.rerunTests';
