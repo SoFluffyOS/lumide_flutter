@@ -29,6 +29,7 @@ Use the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`).
 | `flutter.hotReload` / `flutter.hotRestart` | Apply code changes or reset state |
 | `flutter.test` / `flutter.testFile` / `flutter.stopTests` | Run all tests, the current file's tests, or stop |
 | `flutter.debugTestFile` | Debug the current file's tests |
+| `flutter.testWithCoverage` | Run tests and show line coverage |
 | `flutter.devtools.<page>` | Open one DevTools page |
 | `flutter.toggleWidgetInspector` | Click a widget and open its source |
 | `flutter.togglePerformanceOverlay` | Toggle the runtime overlay |
@@ -46,7 +47,9 @@ Run all tests, a file, or a folder from the Command Palette or the file tree. Re
 
 Click **Run** above a `test`, `testWidgets`, or `group` to run just that one. In the Tests pane, rerun the whole run, only failed tests, or any suite, group, or test. Different tests run side by side, each in its own Tests pane, and running tests that are still running asks to stop them first.
 
-Click **Debug** above a test, or the debug button on a Tests pane row, to stop at breakpoints. Debugging runs one test file at a time, and not while an app is running. Requires Lumide 0.24.0 and later.
+Click **Debug** above a test, or the debug button on a Tests pane row, to stop at breakpoints. Debugging runs one test file at a time, and not while an app is running.
+
+Run **Flutter: Run Tests with Coverage**, or right-click a test folder, to shade covered and uncovered lines in the editor. Requires Lumide 0.24.0 and later.
 
 ## Logpoints
 

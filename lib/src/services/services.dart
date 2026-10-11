@@ -8,6 +8,7 @@ export 'hot_reload_controller.dart';
 export 'launch_config_service.dart';
 export 'launch_options_store.dart';
 export 'launch_source_resolver.dart';
+export 'lcov_parser.dart';
 export 'log_service.dart';
 export 'machine_requests.dart';
 export 'project_service.dart';

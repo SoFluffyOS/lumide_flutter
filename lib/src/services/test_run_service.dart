@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:lumide_api/lumide_api.dart';
 import 'package:lumide_flutter/src/constants.dart';
+import 'package:lumide_flutter/src/services/lcov_parser.dart';
 import 'package:lumide_flutter/src/services/log_service.dart';
 import 'package:lumide_flutter/src/services/project_service.dart';
 import 'package:lumide_flutter/src/services/sdk_manager.dart';
@@ -86,6 +87,18 @@ class TestRunService {
       debug: debug,
     );
   }
+
+  /// Runs the tests in a file or folder passed by a menu, or the whole
+  /// project, and shows line coverage in the editor.
+  Future<void> runWithCoverage([Map<String, dynamic>? args]) {
+    final target = _pathFromArgs(args);
+    return _start(
+      TestInvocation(files: [if (target case final value?) value]),
+      toolArgs: const [_coverageFlag],
+    );
+  }
+
+  static const _coverageFlag = '--coverage';
 
   /// Runs tests for [target] (a file or folder), or the whole project.
   Future<void> run({String? target, List<String> toolArgs = const []}) =>
@@ -203,7 +216,7 @@ class TestRunService {
       ...toolArgs,
       ...selection,
     ];
-    final runTitle = title ?? _defaultTitle(invocation, root);
+    final runTitle = title ?? _defaultTitle(invocation, root, toolArgs);
     final key = [root, ...arguments].join('\n');
     if (!await _stopSameTests(key, runTitle)) return;
     late final LumideTestRun testRun;
@@ -267,6 +280,8 @@ class TestRunService {
 
     final active = _ActiveRun(
       key: key,
+      root: root,
+      reportsCoverage: toolArgs.contains(_coverageFlag),
       channelName: channelName,
       debugger: debugger,
       process: process,
@@ -418,11 +433,16 @@ class TestRunService {
 
     final stderrText = active.stderrOutput.toString().trim();
     if (stderrText.isNotEmpty) logService.warn('flutter test: $stderrText');
+    final coverage = switch (active.reportsCoverage && !active.cancelled) {
+      true => await _reportCoverage(active),
+      false => null,
+    };
     final summary = switch ((active.cancelled, active.reporter.summary)) {
       (true, final counts) => 'Stopped. $counts',
       (false, '0 passed') when exitCode != 0 =>
         'flutter test exited with code $exitCode. $stderrText'.trim(),
-      (false, final counts) => counts,
+      (false, final counts) =>
+        [counts, if (coverage != null) coverage].join(', '),
     };
     active.outputBuffer.add(summary);
     await _flush(active);
@@ -435,6 +455,37 @@ class TestRunService {
     _active.remove(active.testRun.id);
     await active.debugger?.endTestDebugging(exitCode);
     active.done.complete();
+  }
+
+  /// Sends `coverage/lcov.info` to the run. Returns a summary such as
+  /// `82% covered`, or null when there is no report.
+  Future<String?> _reportCoverage(_ActiveRun active) async {
+    final reportPath = path.join(active.root, 'coverage', 'lcov.info');
+    final List<LumideFileCoverage> files;
+    try {
+      files = parseLcov(
+        await context.fs.readString(reportPath),
+        projectRoot: active.root,
+      );
+    } catch (error) {
+      logService.warn('No coverage report at $reportPath: $error');
+      return null;
+    }
+    try {
+      await active.testRun.setCoverage(files);
+    } catch (error) {
+      logService.error('Could not send coverage', error);
+      return null;
+    }
+    final covered =
+        files.fold(0, (sum, file) => sum + file.coveredLines.length);
+    final total = files.fold(
+      0,
+      (sum, file) =>
+          sum + file.coveredLines.length + file.uncoveredLines.length,
+    );
+    if (total == 0) return null;
+    return '${(covered * 100 / total).round()}% covered';
   }
 
   void _remember(String runId, _RunRecord record) {
@@ -456,10 +507,16 @@ class TestRunService {
     return byRunId[runId.substring(separator + 1)];
   }
 
-  String _defaultTitle(TestInvocation invocation, String root) {
-    final relativeFiles = invocation.arguments(root);
-    if (relativeFiles.isEmpty) return 'flutter test';
-    return 'flutter test ${relativeFiles.join(' ')}';
+  String _defaultTitle(
+    TestInvocation invocation,
+    String root,
+    List<String> toolArgs,
+  ) {
+    return [
+      'flutter test',
+      if (toolArgs.contains(_coverageFlag)) _coverageFlag,
+      ...invocation.arguments(root),
+    ].join(' ');
   }
 
   String _titleFor(List<TestTarget> targets) {
@@ -520,6 +577,8 @@ class _RunRecord {
 class _ActiveRun {
   _ActiveRun({
     required this.key,
+    required this.root,
+    required this.reportsCoverage,
     required this.channelName,
     required this.debugger,
     required this.process,
@@ -532,6 +591,10 @@ class _ActiveRun {
   /// The project root and arguments; runs with the same key run the same
   /// tests.
   final String key;
+  final String root;
+
+  /// Whether the run writes `coverage/lcov.info` to send when it ends.
+  final bool reportsCoverage;
   final String channelName;
 
   /// Set while the run is debugged.

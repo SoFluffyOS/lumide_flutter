@@ -34,6 +34,7 @@ final Map<String, String> flutterCommandTitles = {
   cmdFlutterRerunTests: 'Flutter: Rerun Tests',
   cmdFlutterDebugTestFile: 'Flutter: Debug Tests in File',
   cmdFlutterDebugTests: 'Flutter: Debug Tests',
+  cmdFlutterTestWithCoverage: 'Flutter: Run Tests with Coverage',
   cmdFlutterRun: 'Flutter: Run',
   cmdFlutterDebug: 'Flutter: Debug',
   cmdFlutterAttach: 'Flutter: Attach',

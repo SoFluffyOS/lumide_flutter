@@ -6,6 +6,7 @@
 - Support logpoints (*).
 - Run a single test or group from its code lens, and rerun all, failed, or any test from the Tests pane (**).
 - Debug tests from a code lens, the Tests pane, or **Flutter: Debug Tests in File** (**).
+- Run tests with coverage from the Command Palette or the file tree, and see covered and uncovered lines in the editor (**).
 
 ### ✨ Enhancements
 

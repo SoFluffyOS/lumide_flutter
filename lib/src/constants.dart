@@ -103,3 +103,4 @@ const String cmdFlutterStopTests = 'flutter.stopTests';
 const String cmdFlutterRerunTests = 'flutter.rerunTests';
 const String cmdFlutterDebugTestFile = 'flutter.debugTestFile';
 const String cmdFlutterDebugTests = 'flutter.debugTests';
+const String cmdFlutterTestWithCoverage = 'flutter.testWithCoverage';

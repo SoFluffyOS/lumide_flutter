@@ -124,6 +124,9 @@ contributes:
     - id: flutter.debugTestFile
       title: 'Flutter: Debug Tests in File'
       category: 'Flutter'
+    - id: flutter.testWithCoverage
+      title: 'Flutter: Run Tests with Coverage'
+      category: 'Flutter'
     - id: flutter.stopTests
       title: 'Flutter: Stop Tests'
       category: 'Flutter'

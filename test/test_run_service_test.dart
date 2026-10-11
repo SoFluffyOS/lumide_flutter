@@ -341,6 +341,22 @@ void main() {
     await service.runFile({'uri': 'file:///project/test/a_test.dart'}, true);
     expect(context.tests.runs, isEmpty);
   });
+
+  test('a coverage run sends lcov coverage and reports it', () async {
+    context.fs.files['/project/coverage/lcov.info'] =
+        'SF:lib/math.dart\nDA:1,1\nDA:2,1\nDA:3,1\nDA:4,0\nend_of_record\n';
+    await service.runWithCoverage();
+
+    expect(sdkManager.arguments, ['test', '--machine', '--coverage']);
+    final run = context.tests.runs.single;
+    expect(run.title, 'flutter test --coverage');
+
+    sdkManager.process.exit(0);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    expect(run.coverage?.single.uri, 'file:///project/lib/math.dart');
+    expect(run.coverage?.single.uncoveredLines, [4]);
+    expect(run.summary, '0 passed, 75% covered');
+  });
 }
 
 class _Debugger implements TestDebugger {
@@ -445,11 +461,16 @@ class _Run implements LumideTestRun {
   final String? debugCommand;
   final String? stopCommand;
   final results = <LumideTestResult>[];
+  List<LumideFileCoverage>? coverage;
   String? summary;
 
   @override
   Future<void> update(List<LumideTestResult> results) async =>
       this.results.addAll(results);
+
+  @override
+  Future<void> setCoverage(List<LumideFileCoverage> files) async =>
+      coverage = files;
 
   @override
   Future<void> end({String? summary}) async => this.summary = summary;
@@ -539,7 +560,21 @@ class _Window implements LumideWindow {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+class _Fs implements LumideFileSystem {
+  final files = <String, String>{};
+
+  @override
+  Future<String> readString(String path) async =>
+      files[path] ?? (throw StateError('missing $path'));
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 class _Context implements LumideContext {
+  @override
+  final _Fs fs = _Fs();
+
   @override
   final _Tests tests = _Tests();
 

@@ -402,6 +402,11 @@ class FlutterPlugin extends LumidePlugin {
         callback: ([args]) => testRunService.runFile(args, true),
       ),
       context.commands.registerCommand(
+        id: cmdFlutterTestWithCoverage,
+        title: flutterCommandTitle(cmdFlutterTestWithCoverage),
+        callback: ([args]) => testRunService.runWithCoverage(args),
+      ),
+      context.commands.registerCommand(
         id: cmdFlutterDebugTests,
         title: flutterCommandTitle(cmdFlutterDebugTests),
         callback: ([args]) => testRunService.rerun(args, true),
@@ -479,6 +484,16 @@ class FlutterPlugin extends LumidePlugin {
           location: LumideMenuLocation.fileTreeItem,
           group: 'tools',
           priority: 105,
+        ),
+      ),
+      context.menus.registerAction(
+        const LumideMenuAction(
+          id: 'test_coverage_file_tree',
+          title: 'Run Flutter Tests with Coverage',
+          command: cmdFlutterTestWithCoverage,
+          location: LumideMenuLocation.fileTreeItem,
+          group: 'tools',
+          priority: 104,
         ),
       ),
       context.menus.registerAction(
