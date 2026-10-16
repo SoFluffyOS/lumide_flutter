@@ -129,7 +129,7 @@ class _RetryingProjectService extends ProjectService {
   var attempts = 0;
 
   @override
-  Future<String> getProjectRoot([String? uri]) async {
+  Future<String> getProjectRoot([String? uri, String? workspaceFolder]) async {
     attempts++;
     if (attempts == 1) throw StateError('Workspace is not open yet');
     return rootPath;
@@ -142,5 +142,7 @@ class _FakeSdkManager extends SdkManager {
   final List<String> command;
 
   @override
-  Future<List<String>> getFlutterCommand(String projectRoot) async => command;
+  Future<List<String>> getFlutterCommand(String projectRoot,
+          {String? workspaceFolder}) async =>
+      command;
 }

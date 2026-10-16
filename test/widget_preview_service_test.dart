@@ -184,7 +184,8 @@ class _SdkManager extends SdkManager {
   @override
   Future<bool> supportsWidgetPreview(String projectRoot) async => supported;
   @override
-  Future<List<String>> getFlutterCommand(String projectRoot) async =>
+  Future<List<String>> getFlutterCommand(String projectRoot,
+          {String? workspaceFolder}) async =>
       ['flutter'];
 }
 

@@ -26,3 +26,4 @@ export 'test_selection.dart';
 export 'widget_inspector_service.dart';
 export 'widget_preview_server.dart';
 export 'widget_preview_service.dart';
+export 'workspace_folders.dart';

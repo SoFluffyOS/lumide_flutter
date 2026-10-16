@@ -57,7 +57,8 @@ class _SdkManager extends SdkManager {
   Completer<void>? pendingVersion;
 
   @override
-  Future<List<String>> getFlutterCommand(String projectRoot) async =>
+  Future<List<String>> getFlutterCommand(String projectRoot,
+          {String? workspaceFolder}) async =>
       ['flutter'];
 
   @override

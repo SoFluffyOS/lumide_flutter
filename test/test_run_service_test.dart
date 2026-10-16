@@ -452,6 +452,7 @@ class _SdkManager extends SdkManager {
     List<String> arguments, {
     String? workingDirectory,
     Map<String, String>? environment,
+    String? workspaceFolder,
   }) async {
     this.arguments = arguments;
     return process = _Process();
@@ -462,7 +463,7 @@ class _ProjectService extends ProjectService {
   _ProjectService(super.context);
 
   @override
-  Future<String> getProjectRoot([String? uri]) async => '/project';
+  Future<String> getProjectRoot([String? uri, String? _]) async => '/project';
 }
 
 class _Run implements LumideTestRun {
@@ -508,6 +509,7 @@ class _Tests implements LumideTests {
     String? runCommand,
     String? debugCommand,
     String? stopCommand,
+    String? requestId,
   }) async {
     final run = _Run(
       'run-${runs.length + 1}',

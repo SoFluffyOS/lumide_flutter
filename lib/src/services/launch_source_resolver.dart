@@ -1,5 +1,6 @@
 import 'package:lumide_api/lumide_api.dart';
 import 'package:lumide_flutter/src/constants.dart';
+import 'package:lumide_flutter/src/services/workspace_folders.dart';
 import 'package:path/path.dart' as path;
 
 LumideLaunchResolution resolveFlutterLaunchSource(
@@ -49,6 +50,7 @@ LumideLaunchResolution resolveFlutterLaunchSource(
       _resolveWorkspacePath(target, projectRoot, relativeBase: targetBase) ??
           target;
   final launchTarget = target.contains(r'${') ? target : resolvedTarget;
+  final isRelativeTarget = !target.contains(r'${') && !path.isAbsolute(target);
   return LumideLaunchResolution(
     configuration: LumideLaunchConfiguration(
       id: source.id,
@@ -63,6 +65,11 @@ LumideLaunchResolution resolveFlutterLaunchSource(
       arguments: {
         'canLaunch': deviceId != null || selectedDeviceId != null,
         'target': launchTarget,
+        // Lumide resolves the variable to the folder holding the
+        // `launch.json` at launch time, where a relative target is resolved
+        // against that folder's project rather than [projectRoot].
+        workspaceFolderArgument: r'${workspaceFolder}',
+        if (isRelativeTarget) relativeTargetArgument: target,
         if (cwd != null) 'cwd': cwd,
         if (deviceId != null) 'deviceId': deviceId,
         if (flavor != null) 'flavor': flavor,

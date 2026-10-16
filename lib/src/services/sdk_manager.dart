@@ -14,7 +14,10 @@ class SdkManager {
   final Duration versionCheckTimeout;
   final Map<String, Future<bool>> _widgetPreviewSupport = {};
 
-  Future<String?> _workspaceRoot() async {
+  Future<String?> _workspaceRoot([String? workspaceFolder]) async {
+    if (workspaceFolder != null && workspaceFolder.isNotEmpty) {
+      return path.normalize(path.absolute(workspaceFolder));
+    }
     try {
       final root = await context.workspace.getRootUri();
       if (root case final uri? when uri.isNotEmpty) {
@@ -24,16 +27,24 @@ class SdkManager {
     return null;
   }
 
-  Future<List<String>> getFlutterCommand(String projectRoot) async {
+  /// The command that runs Flutter for [projectRoot].
+  ///
+  /// A project below its workspace folder falls back on the folder's
+  /// workspace SDK, such as from the folder's `.fvmrc`. [workspaceFolder] is
+  /// that folder; without it, the first folder is used.
+  Future<List<String>> getFlutterCommand(
+    String projectRoot, {
+    String? workspaceFolder,
+  }) async {
     try {
-      final resolved = await _resolveFlutter(projectRoot);
+      final resolved = await _resolveFlutter(projectRoot, workspaceFolder);
       if (resolved case (request: _, :final resolution)) {
         return [resolution.executable, ...resolution.arguments];
       }
     } catch (_) {
       // Host resolution failed or threw. Fall back to legacy discovery.
     }
-    return _legacyFlutterCommand(projectRoot);
+    return _legacyFlutterCommand(projectRoot, workspaceFolder);
   }
 
   /// Starts `flutter <arguments>` with the SDK [getFlutterCommand] picks.
@@ -46,9 +57,10 @@ class SdkManager {
     List<String> arguments, {
     String? workingDirectory,
     Map<String, String>? environment,
+    String? workspaceFolder,
   }) async {
     try {
-      final resolved = await _resolveFlutter(projectRoot);
+      final resolved = await _resolveFlutter(projectRoot, workspaceFolder);
       if (resolved case (:final request, resolution: _)) {
         return await _hostProcesses.spawn(
           () => context.sdks.spawn(
@@ -62,7 +74,10 @@ class SdkManager {
     } catch (_) {
       // Fall back to a local process below.
     }
-    final command = await getFlutterCommand(projectRoot);
+    final command = await getFlutterCommand(
+      projectRoot,
+      workspaceFolder: workspaceFolder,
+    );
     return LocalSdkProcess.start(
       [...command, ...arguments],
       workingDirectory: workingDirectory ?? projectRoot,
@@ -80,14 +95,17 @@ class SdkManager {
       ({
         LumideSdkResolveRequest request,
         LumideSdkResolution resolution,
-      })?> _resolveFlutter(String projectRoot) async {
+      })?> _resolveFlutter(
+    String projectRoot, [
+    String? workspaceFolder,
+  ]) async {
     final request = _flutterRequest(projectRoot);
     final resolution = await context.sdks.resolve(request);
     if (resolution == null || resolution.executable.isEmpty) return null;
 
     final isWorkspaceScoped =
         resolution.installation.managerScope == LumideSdkManagerScope.workspace;
-    final wsRoot = await _workspaceRoot();
+    final wsRoot = await _workspaceRoot(workspaceFolder);
     final normalizedProject = path.normalize(path.absolute(projectRoot));
     final isAtWorkspaceRoot = switch (wsRoot) {
       final root? => path.equals(root, normalizedProject),
@@ -118,9 +136,12 @@ class SdkManager {
         executable: 'flutter',
       );
 
-  Future<List<String>> _legacyFlutterCommand(String projectRoot) async {
+  Future<List<String>> _legacyFlutterCommand(
+    String projectRoot, [
+    String? workspaceFolder,
+  ]) async {
     final searchDirs = <String>[projectRoot];
-    final wsRoot = await _workspaceRoot();
+    final wsRoot = await _workspaceRoot(workspaceFolder);
     final normalizedProject = path.normalize(path.absolute(projectRoot));
     if (wsRoot case final root? when !path.equals(root, normalizedProject)) {
       searchDirs.add(root);

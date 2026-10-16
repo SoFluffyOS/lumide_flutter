@@ -118,6 +118,9 @@ class RunService implements TestDebugger {
   bool _initialPauseReached = false;
   bool _initialResumePending = false;
   final MachineRequests _machineRequests = MachineRequests();
+
+  /// Workspace folders Lumide asked for targets, one request per folder.
+  final Set<String> _resolvedWorkspaceFolders = {};
   late final HotReloadController _hotReloadController = HotReloadController(
     send: _sendAppRestart,
     onResult: _reportRestartResult,
@@ -304,7 +307,11 @@ class RunService implements TestDebugger {
     LumideLaunchResolveRequest request,
   ) async {
     if (request.providerId != launchProviderFlutter) return const [];
-    return await _currentLaunchConfigurations();
+    final workspaceFolder = absolutePathOrNull(request.workspacePath);
+    if (workspaceFolder != null) _resolvedWorkspaceFolders.add(workspaceFolder);
+    return await _currentLaunchConfigurations(
+      workspaceFolder: workspaceFolder,
+    );
   }
 
   Future<LumideLaunchResolution> _resolveSourceConfiguration(
@@ -320,21 +327,45 @@ class RunService implements TestDebugger {
     );
   }
 
+  /// Pushes the targets of the first workspace folder. Lumide asks for the
+  /// targets of other folders with a resolve request per folder.
   Future<void> _updateLaunchConfigurations() async {
     await context.launch.updateConfigurations(
       launchProviderFlutter,
-      await _currentLaunchConfigurations(),
+      await _currentLaunchConfigurations(
+        workspaceFolder: await _firstWorkspaceFolder(),
+      ),
     );
+  }
+
+  Future<String?> _firstWorkspaceFolder() async {
+    try {
+      return absolutePathOrNull(await context.workspace.getRootUri());
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<void> refreshLaunchConfigurations() async {
     await _updateLaunchConfigurations();
   }
 
-  Future<List<LumideLaunchConfiguration>> _currentLaunchConfigurations() async {
+  /// The launch targets of [workspaceFolder], or of every folder when null.
+  ///
+  /// VS Code entries come from the first folder's `.vscode/launch.json`, so
+  /// they belong to the first folder.
+  Future<List<LumideLaunchConfiguration>> _currentLaunchConfigurations({
+    String? workspaceFolder,
+  }) async {
     final configs = <LumideLaunchConfiguration>[];
+    final firstFolder = await _firstWorkspaceFolder();
+    final isFirstFolder = workspaceFolder == null ||
+        firstFolder == null ||
+        path.equals(workspaceFolder, firstFolder);
 
-    final vscodeEntries = launchConfigService.entries;
+    final vscodeEntries = isFirstFolder
+        ? launchConfigService.entries
+        : const <VscodeLaunchEntry>[];
     final selectedVscode = targetService.selectedVscodeEntry;
     for (final entry in vscodeEntries) {
       final hasFixedDevice = entry.deviceId != null;
@@ -359,16 +390,34 @@ class RunService implements TestDebugger {
           'deviceIcon':
               entry.deviceId != null ? iconGlobe : deviceService.displayIcon,
           'hideDevicePicker': hasFixedDevice,
+          if (workspaceFolder != null) workspaceFolderArgument: workspaceFolder,
         },
       ));
     }
 
-    final targets = await targetService.launchTargets();
+    final allTargets = await targetService.launchTargets();
+    final targets = launchTargetsForFolder(
+      allTargets,
+      folder: workspaceFolder,
+      isFirstFolder: isFirstFolder,
+      selectedTarget: targetService.selectedTarget,
+      knownFolders: _resolvedWorkspaceFolders,
+    );
     if (targets.isEmpty && vscodeEntries.isEmpty) {
-      configs.add(await _buildLaunchConfiguration(null));
+      // Without any target, the first folder lists the selected one. Other
+      // folders without a Flutter app list none.
+      if (isFirstFolder && allTargets.isEmpty) {
+        configs.add(await _buildLaunchConfiguration(
+          null,
+          workspaceFolder: workspaceFolder,
+        ));
+      }
     } else {
       for (final target in targets) {
-        configs.add(await _buildLaunchConfiguration(target));
+        configs.add(await _buildLaunchConfiguration(
+          target,
+          workspaceFolder: workspaceFolder,
+        ));
       }
     }
 
@@ -390,7 +439,9 @@ class RunService implements TestDebugger {
     return configs;
   }
 
-  Future<LumideLaunchConfiguration> _currentLaunchConfiguration() async {
+  Future<LumideLaunchConfiguration> _currentLaunchConfiguration({
+    String? workspaceFolder,
+  }) async {
     // When a vscode entry is the active selection, return it as the current
     // config so the toolbar/panel shows its name and icon correctly.
     final vscodeEntry = targetService.selectedVscodeEntry;
@@ -419,15 +470,20 @@ class RunService implements TestDebugger {
               ? iconGlobe
               : deviceService.displayIcon,
           'hideDevicePicker': hasFixedDevice,
+          if (workspaceFolder != null) workspaceFolderArgument: workspaceFolder,
         },
       );
     }
-    return await _buildLaunchConfiguration(targetService.selectedTarget);
+    return await _buildLaunchConfiguration(
+      targetService.selectedTarget,
+      workspaceFolder: workspaceFolder,
+    );
   }
 
   Future<LumideLaunchConfiguration> _buildLaunchConfiguration(
-    String? target,
-  ) async {
+    String? target, {
+    String? workspaceFolder,
+  }) async {
     final selectedTarget = targetService.selectedTarget;
     final targetLabel = target == null
         ? await targetService.displayLabel()
@@ -524,6 +580,7 @@ class RunService implements TestDebugger {
         if (flavor != null) 'flavor': flavor,
         if (_selectedBuildMode != null) 'buildMode': _selectedBuildMode,
         if (customArgs.isNotEmpty) 'toolArgs': customArgs,
+        if (workspaceFolder != null) workspaceFolderArgument: workspaceFolder,
       },
     );
   }
@@ -532,6 +589,8 @@ class RunService implements TestDebugger {
     LumideLaunchConfigureRequest request,
   ) async {
     if (request.providerId != launchProviderFlutter) return null;
+    final folder = workspaceFolderOf(request.configuration?.arguments) ??
+        absolutePathOrNull(request.workspacePath);
 
     switch (request.configuration) {
       case LumideLaunchConfiguration config
@@ -549,7 +608,7 @@ class RunService implements TestDebugger {
     switch (request.actionId) {
       case 'target':
         await targetService.selectTarget(request.position);
-        return await _currentLaunchConfiguration();
+        return await _currentLaunchConfiguration(workspaceFolder: folder);
       case 'selectConfiguration':
         final configId = request.configuration?.id ?? '';
         if (configId.startsWith(vscodeConfigPrefix)) {
@@ -567,7 +626,7 @@ class RunService implements TestDebugger {
             case final String target) {
           await targetService.setSelectedTarget(target);
         }
-        return await _currentLaunchConfiguration();
+        return await _currentLaunchConfiguration(workspaceFolder: folder);
       case 'device':
         final vscodeEntry = targetService.selectedVscodeEntry;
         if (vscodeEntry != null && vscodeEntry.deviceId != null) {
@@ -578,22 +637,22 @@ class RunService implements TestDebugger {
         } else {
           await deviceService.selectDevice(request.position);
         }
-        return await _currentLaunchConfiguration();
+        return await _currentLaunchConfiguration(workspaceFolder: folder);
       case 'flavor':
         await setFlavor(request.value?.toString());
-        return await _currentLaunchConfiguration();
+        return await _currentLaunchConfiguration(workspaceFolder: folder);
       case 'buildMode':
         await setBuildMode(request.value?.toString(), request.position);
-        return await _currentLaunchConfiguration();
+        return await _currentLaunchConfiguration(workspaceFolder: folder);
       case 'toolArgs':
         await setCustomToolArgs(request.value?.toString());
-        return await _currentLaunchConfiguration();
+        return await _currentLaunchConfiguration(workspaceFolder: folder);
       case 'customTarget':
         await targetService.setCustomTarget(request.value?.toString());
-        return await _currentLaunchConfiguration();
+        return await _currentLaunchConfiguration(workspaceFolder: folder);
       case 'refreshTargets':
         await targetService.refreshTargets(request.position);
-        return await _currentLaunchConfiguration();
+        return await _currentLaunchConfiguration(workspaceFolder: folder);
       case String id when id.startsWith(vscodeConfigPrefix):
         final name = id.substring(vscodeConfigPrefix.length);
         final entry = launchConfigService.entries
@@ -602,12 +661,12 @@ class RunService implements TestDebugger {
         if (entry != null) {
           await targetService.setSelectedVscodeEntry(entry);
         }
-        return await _currentLaunchConfiguration();
+        return await _currentLaunchConfiguration(workspaceFolder: folder);
       case 'stop':
         await stop();
-        return await _currentLaunchConfiguration();
+        return await _currentLaunchConfiguration(workspaceFolder: folder);
       default:
-        return await _currentLaunchConfiguration();
+        return await _currentLaunchConfiguration(workspaceFolder: folder);
     }
   }
 
@@ -847,13 +906,31 @@ class RunService implements TestDebugger {
     }
 
     _isLaunching = true;
+    // The workspace folder the configuration runs in, kept in its arguments.
+    // Null for launches without a configuration, which use the first folder.
+    final workspaceFolder = workspaceFolderOf(configuration?.arguments);
+    final configuredTarget = _stringArgument(configuration, 'target');
+    final relativeTarget = switch (workspaceFolder) {
+      null => null,
+      _ => _stringArgument(configuration, relativeTargetArgument),
+    };
     String root;
     try {
-      root = await projectService
-          .getProjectRoot(switch (useSelectedConfiguration) {
-        true => null,
-        false => _stringArgument(configuration, 'target'),
-      });
+      root = await projectService.getProjectRoot(
+        switch (useSelectedConfiguration) {
+          // A target outside the configuration's folder runs in its own
+          // project.
+          true
+              when workspaceFolder != null &&
+                  relativeTarget == null &&
+                  absolutePathOrNull(configuredTarget) != null &&
+                  !isInFolder(workspaceFolder, configuredTarget!) =>
+            configuredTarget,
+          true => null,
+          false => configuredTarget,
+        },
+        workspaceFolder,
+      );
     } catch (e) {
       _isLaunching = false;
       await context.window.showMessage(
@@ -878,7 +955,10 @@ class RunService implements TestDebugger {
       final rawFlavor = _stringArgument(configuration, 'flavor') ??
           vscodeEntry?.flavorName ??
           await _configuredFlavor();
-      final rawTarget = _stringArgument(configuration, 'target') ??
+      // A relative launch.json target resolves against the project of the
+      // configuration's folder, like `cwd`.
+      final rawTarget = relativeTarget ??
+          configuredTarget ??
           vscodeEntry?.program ??
           targetService.selectedTarget;
 
@@ -1013,7 +1093,13 @@ class RunService implements TestDebugger {
         _FlutterLaunchMode.debug => 'Debugging',
         _FlutterLaunchMode.run => 'Running',
       };
-      final flutterCmd = await sdkManager.getFlutterCommand(workingDirectory);
+      final flutterCmd = await sdkManager.getFlutterCommand(
+        workingDirectory,
+        workspaceFolder: switch (workspaceFolder) {
+          final folder? when isInFolder(folder, workingDirectory) => folder,
+          _ => null,
+        },
+      );
 
       await context.window.showMessage(
         '$action on $deviceId using ${flutterCmd.join(' ')}',

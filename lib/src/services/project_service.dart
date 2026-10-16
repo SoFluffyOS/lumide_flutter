@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:lumide_api/lumide_api.dart';
+import 'package:lumide_flutter/src/services/workspace_folders.dart';
 import 'package:path/path.dart' as path;
 
 extension UriExtension on Uri {
@@ -75,14 +76,19 @@ class ProjectService {
 
   /// Returns the root path of the Flutter project.
   /// Relies firmly on the host IDE workspace API.
-  Future<String> getProjectRoot([String? uri]) async {
+  ///
+  /// With a [workspaceFolder], the project is looked up in that folder, as
+  /// in the first folder otherwise.
+  Future<String> getProjectRoot([String? uri, String? workspaceFolder]) async {
+    final folder = absolutePathOrNull(workspaceFolder);
     final hintedPath = _pathFromUriOrPath(uri);
     if (hintedPath != null) {
-      final hintedRoot = await findProjectRootForPath(hintedPath);
+      final hintedRoot =
+          await findProjectRootForPath(hintedPath, workspaceFolder: folder);
       if (hintedRoot != null) return hintedRoot;
     }
 
-    final workspaceRootUri = await context.workspace.getRootUri();
+    final workspaceRootUri = folder ?? await context.workspace.getRootUri();
     if (workspaceRootUri != null) {
       final normalizedWorkspace = path.normalize(workspaceRootUri);
       try {
@@ -91,7 +97,7 @@ class ProjectService {
           return normalizedWorkspace;
         }
       } catch (_) {}
-      final projects = await findAllProjects();
+      final projects = pathsInFolder(await findAllProjects(), folder);
       for (final project in projects) {
         final pubspec = path.join(project, 'pubspec.yaml');
         try {
@@ -141,14 +147,20 @@ class ProjectService {
     return projectRoot;
   }
 
-  Future<String?> findProjectRootForPath(String fileOrFolderPath) async {
+  /// The nearest directory holding a `pubspec.yaml` from [fileOrFolderPath]
+  /// up to [workspaceFolder], or up to the first folder.
+  Future<String?> findProjectRootForPath(
+    String fileOrFolderPath, {
+    String? workspaceFolder,
+  }) async {
     var current = fileOrFolderPath;
     final extension = path.extension(current);
     if (extension.isNotEmpty) {
       current = path.dirname(current);
     }
 
-    final workspaceRoot = await context.workspace.getRootUri();
+    final workspaceRoot =
+        workspaceFolder ?? await context.workspace.getRootUri();
     final normalizedWorkspaceRoot =
         workspaceRoot == null ? null : path.normalize(workspaceRoot);
 
