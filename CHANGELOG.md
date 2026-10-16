@@ -14,6 +14,10 @@
 - Show each test run's output in its own output channel.
 - Run different tests at the same time. Running tests that are still running asks to stop them first (**).
 
+### 🐛 Bug Fixes
+
+- Don't offer Flutter SDK releases built for another CPU architecture when the release names an architecture Lumide doesn't recognize.
+
 > (*) Note: These features require Lumide 0.23.0 and later.
 >
 > (**) Note: This feature requires Lumide 0.24.0 and later.

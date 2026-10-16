@@ -178,6 +178,7 @@ String _flutterReleaseArchitecture(Map release, String archive) {
   final declared = release['dart_sdk_arch']?.toString().toLowerCase();
   if (declared == 'arm64' || declared == 'aarch64') return 'arm64';
   if (declared == 'x64' || declared == 'x86_64') return 'x64';
+  if (declared != null && declared.isNotEmpty) return declared;
   if (archive.toLowerCase().contains('arm64')) return 'arm64';
   return 'x64';
 }
