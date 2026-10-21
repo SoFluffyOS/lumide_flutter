@@ -1,7 +1,8 @@
-## Unreleased
+## 1.16.0 (2026-10-21)
 
 ### 🚀 New Features
 
+- Support workspaces of several folders (**): each folder lists its own Flutter apps, and runs and debugs them from its own project and Flutter SDK, such as from the folder's `.fvmrc`.
 - Run tests and see results in Lumide's Tests pane (*).
 - Support logpoints (*).
 - Run a single test or group from its code lens, and rerun all, failed, or any test from the Tests pane (**).
@@ -13,6 +14,9 @@
 - Start `flutter run` and the Flutter daemon through Lumide's SDK manager.
 - Show each test run's output in its own output channel.
 - Run different tests at the same time. Running tests that are still running asks to stop them first (**).
+- Run `launch.json` configurations of an added folder in that folder (**).
+- Run tests from the package and workspace folder that hold them, with the folder's Flutter SDK (**).
+- Tell Lumide which request a test run answers, so the run fills the place in the Tests pane it was asked for (**).
 
 ### 🐛 Bug Fixes
 
@@ -20,7 +24,7 @@
 
 > (*) Note: These features require Lumide 0.23.0 and later.
 >
-> (**) Note: This feature requires Lumide 0.24.0 and later.
+> (**) Note: These features require Lumide 0.24.0 and later.
 
 ## 1.15.0 (2026-10-11)
 
