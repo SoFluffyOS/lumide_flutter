@@ -103,6 +103,7 @@ class RunService implements TestDebugger {
   String? _devToolsServerHost;
   int? _devToolsServerPort;
   String? _wsUri;
+  String? _activeDeviceId;
 
   String? _activeAppId;
   String? _activeIsolateId;
@@ -990,6 +991,7 @@ class RunService implements TestDebugger {
         args.add('--start-paused');
       }
       args.addAll(['-d', deviceId]);
+      _activeDeviceId = deviceId;
 
       final flavor = rawFlavor != null
           ? await launchConfigService.resolveDynamicVariables(rawFlavor,
@@ -1148,6 +1150,7 @@ class RunService implements TestDebugger {
           providerId: launchProviderFlutter,
           kind: _activeLaunchKind ?? LumideLaunchKind.run,
           configurationId: _activeLaunchConfigurationId ?? launchConfigCurrent,
+          deviceId: _activeDeviceId,
         ),
       );
       await _showRunControls(isRunning: true);
@@ -1626,6 +1629,7 @@ class RunService implements TestDebugger {
         if (params['wsUri'] case final String wsUri) {
           _wsUri = wsUri;
           unawaited(_connectToVmService(wsUri));
+          unawaited(_reportAttached(wsUri));
         }
         return;
 
@@ -1759,6 +1763,25 @@ class RunService implements TestDebugger {
       '$message See the Flutter output for details.',
       type: MessageType.error,
     );
+  }
+
+  /// Tells Lumide where the app runs and how to reach its VM service, so the
+  /// host can relate this run to what it shows, such as Dash Studio's app
+  /// tab. Hosts before 0.25.0 lack the method; that is fine.
+  Future<void> _reportAttached(String wsUri) async {
+    try {
+      await context.launch.didAttach(
+        LumideLaunchEvent(
+          providerId: launchProviderFlutter,
+          kind: _activeLaunchKind ?? LumideLaunchKind.run,
+          configurationId: _activeLaunchConfigurationId ?? launchConfigCurrent,
+          deviceId: _activeDeviceId,
+          vmServiceUri: wsUri,
+        ),
+      );
+    } catch (_) {
+      // An older Lumide; nothing depends on it.
+    }
   }
 
   Future<void> _connectToVmService(String wsUri) async {

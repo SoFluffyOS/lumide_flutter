@@ -1,3 +1,9 @@
+## Unreleased
+
+### ✨ Enhancements
+
+- Tell Lumide which device a run started on and where its VM service is, so the host can relate the run to what it shows, such as Dash Studio's app tab (requires Lumide 0.25.0 and later; older versions ignore it).
+
 ## 1.16.0 (2026-10-21)
 
 ### 🚀 New Features
