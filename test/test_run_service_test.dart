@@ -185,6 +185,21 @@ void main() {
         run.output, same(context.window.channels['Flutter Tests: math adds']));
   });
 
+  test('passes the request id Lumide named on to the run', () async {
+    await service.runFile({
+      'uri': 'file:///project/test/math_test.dart',
+      LumideTests.requestIdArgument: 'request-7',
+    });
+
+    expect(context.tests.requestIds, ['request-7']);
+  });
+
+  test('a run Lumide did not ask for has no request id', () async {
+    await service.runFile({'uri': 'file:///project/test/math_test.dart'});
+
+    expect(context.tests.requestIds, [null]);
+  });
+
   test('a name without a kind also runs the tests inside a group', () async {
     await service.runFile({
       'uri': 'file:///project/test/math_test.dart',
@@ -501,6 +516,7 @@ class _Run implements LumideTestRun {
 
 class _Tests implements LumideTests {
   final runs = <_Run>[];
+  final requestIds = <String?>[];
 
   @override
   Future<LumideTestRun> createRun({
@@ -511,6 +527,7 @@ class _Tests implements LumideTests {
     String? stopCommand,
     String? requestId,
   }) async {
+    requestIds.add(requestId);
     final run = _Run(
       'run-${runs.length + 1}',
       title,

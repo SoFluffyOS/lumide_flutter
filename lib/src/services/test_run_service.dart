@@ -72,10 +72,14 @@ class TestRunService {
     }
     final name = args?['name'];
     if (name is! String || name.isEmpty) {
-      await _start(TestInvocation(files: [target]), debug: debug);
+      await _start(
+          requestId: _requestIdOf(args),
+          TestInvocation(files: [target]),
+          debug: debug);
       return;
     }
     await _start(
+      requestId: _requestIdOf(args),
       TestInvocation(
         files: [target],
         namePattern: testNamePattern(
@@ -93,6 +97,7 @@ class TestRunService {
   Future<void> runWithCoverage([Map<String, dynamic>? args]) {
     final target = _pathFromArgs(args);
     return _start(
+      requestId: _requestIdOf(args),
       TestInvocation(files: [if (target case final value?) value]),
       toolArgs: const [_coverageFlag],
     );
@@ -126,6 +131,7 @@ class TestRunService {
     ];
     if (testIds.isEmpty) {
       await _start(
+        requestId: _requestIdOf(args),
         record.invocation,
         title: record.title,
         toolArgs: record.toolArgs,
@@ -145,6 +151,7 @@ class TestRunService {
     }
     if (targets.isEmpty) return;
     await _start(
+      requestId: _requestIdOf(args),
       invocationFor(targets),
       title: _titleFor(targets),
       toolArgs: record.toolArgs,
@@ -185,11 +192,20 @@ class TestRunService {
     }
   }
 
+  /// The request Lumide named in [args], passed back with the run so it
+  /// fills the place in the Tests pane it was asked for.
+  static String? _requestIdOf(Map<String, dynamic>? args) =>
+      switch (args?[LumideTests.requestIdArgument]) {
+        final String requestId => requestId,
+        _ => null,
+      };
+
   Future<void> _start(
     TestInvocation invocation, {
     String? title,
     List<String> toolArgs = const [],
     bool debug = false,
+    String? requestId,
   }) async {
     final debugger = switch (debug) {
       true => this.debugger,
@@ -257,6 +273,7 @@ class TestRunService {
           false => null,
         },
         stopCommand: cmdFlutterStopTests,
+        requestId: requestId,
       );
     } catch (error) {
       await debugger?.endTestDebugging(-1);
