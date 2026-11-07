@@ -2,6 +2,7 @@
 
 ### ✨ Enhancements
 
+- Create Flutter projects from Lumide's **New Project** dialog: App, Empty App, Package, FFI Package, Plugin and Module, with platforms, organization and options in one form, and from the Welcome screen without a workspace. **Flutter: New Project** opens it too (requires Lumide 0.25.0 and later; older versions keep asking step by step).
 - Tell Lumide which device a run started on and where its VM service is, so the host can relate the run to what it shows, such as Dash Studio's app tab (requires Lumide 0.25.0 and later; older versions ignore it).
 
 ## 1.16.0 (2026-10-21)

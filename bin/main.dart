@@ -50,6 +50,7 @@ class FlutterPlugin extends LumidePlugin {
     context.sdks.onDidChangeSelection((event) {
       _scheduleSdkSelectionRefresh(context, event);
     });
+    FlutterProjectCreator(sdkManager.runFlutter).register(context.projects);
 
     // SDK discovery, catalog browsing, installation, and global selection do
     // not require a workspace. Keep provider-only activation lightweight; the

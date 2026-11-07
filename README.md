@@ -14,7 +14,8 @@ The official Flutter extension for [Lumide IDE](https://lumide.dev).
 - Open focused DevTools panes: Inspector, Performance, CPU Profiler, Memory, Network, and Logging.
 - Click a widget in the running app and jump to its Flutter source.
 - Toggle the performance overlay from the command palette.
-- Run `flutter doctor`, `pub get`, `pub upgrade`, `pub outdated`, `clean`, `build_runner`, `gen-l10n`, and create new projects.
+- Run `flutter doctor`, `pub get`, `pub upgrade`, `pub outdated`, `clean`, `build_runner`, and `gen-l10n`.
+- Create apps, packages, FFI packages, plugins and modules from Lumide's **New Project** dialog, with their platforms, organization and options in one form.
 - Select Flutter SDKs from PATH, FVM, Puro, or Lumide’s SDK manager.
 
 ## Commands

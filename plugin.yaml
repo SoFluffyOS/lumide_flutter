@@ -6,6 +6,12 @@ entry_point: 'bin/main.dart'
 activation_events:
   - 'onSdkProvider:flutter'
   - 'workspaceContains:pubspec.yaml'
+  - 'onProjectTemplate:flutter.app'
+  - 'onProjectTemplate:flutter.empty'
+  - 'onProjectTemplate:flutter.package'
+  - 'onProjectTemplate:flutter.package_ffi'
+  - 'onProjectTemplate:flutter.plugin'
+  - 'onProjectTemplate:flutter.module'
 
 permissions:
   - network:
@@ -58,6 +64,122 @@ configuration:
     title: 'Log Pressure Threshold'
     description: 'When pending log count exceeds this, skip expensive VM lookups for faster processing.'
 contributes:
+  projectTemplates:
+    - id: flutter.app
+      name: App
+      description: The counter app, with comments to learn from
+      group: Flutter
+      nameHint: my_app
+      namePattern: &dartName '^[a-z]([a-z0-9_]*[a-z0-9])?$'
+      nameRule: &dartNameRule Use lowercase letters, digits and underscores, starting with a letter, like my_app.
+      fields:
+        - &platforms
+          id: platforms
+          type: multiSelect
+          label: Platforms
+          options:
+            - { value: android, label: Android }
+            - { value: ios, label: iOS }
+            - { value: web, label: Web }
+            - { value: macos, label: macOS }
+            - { value: windows, label: Windows }
+            - { value: linux, label: Linux }
+          default: [android, ios, web, macos, windows, linux]
+          required: true
+        - &org
+          id: org
+          type: text
+          label: Organization
+          description: Reverse domain notation, like com.example.
+          default: com.example
+          pattern: '^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$'
+          remember: true
+          note: Part of the app's bundle ID and package name, which can't change once it's in a store.
+        - &description
+          id: description
+          type: text
+          label: Description
+          description: For pubspec.yaml.
+          advanced: true
+        - &androidLanguage
+          id: androidLanguage
+          type: select
+          label: Android Language
+          options:
+            - { value: kotlin, label: Kotlin }
+            - { value: java, label: Java }
+          default: kotlin
+          advanced: true
+        - &pub
+          id: pub
+          type: boolean
+          label: Get Packages
+          description: Run pub get once the project is created.
+          default: true
+          advanced: true
+        - &offline
+          id: offline
+          type: boolean
+          label: Offline
+          description: Get packages from the pub cache only.
+          advanced: true
+    - id: flutter.empty
+      name: Empty App
+      description: A minimal app, with a bare main.dart
+      group: Flutter
+      nameHint: my_app
+      namePattern: *dartName
+      nameRule: *dartNameRule
+      fields: [*platforms, *org, *description, *androidLanguage, *pub, *offline]
+    - id: flutter.package
+      name: Package
+      description: Dart code to share between projects
+      group: Flutter
+      nameHint: my_package
+      namePattern: *dartName
+      nameRule: *dartNameRule
+      fields: [*description, *pub, *offline]
+    - id: flutter.package_ffi
+      name: FFI Package
+      description: A Dart API over native code, through dart:ffi
+      group: Flutter
+      nameHint: my_package
+      namePattern: *dartName
+      nameRule: *dartNameRule
+      fields: [*description, *pub, *offline]
+    - id: flutter.plugin
+      name: Plugin
+      description: A Dart API with platform code for each platform
+      group: Flutter
+      nameHint: my_plugin
+      namePattern: *dartName
+      nameRule: *dartNameRule
+      fields:
+        - id: platforms
+          type: multiSelect
+          label: Platforms
+          options:
+            - { value: android, label: Android }
+            - { value: ios, label: iOS }
+            - { value: web, label: Web }
+            - { value: macos, label: macOS }
+            - { value: windows, label: Windows }
+            - { value: linux, label: Linux }
+          default: [android, ios]
+          required: true
+        - *org
+        - *description
+        - *androidLanguage
+        - *pub
+        - *offline
+    - id: flutter.module
+      name: Module
+      description: Flutter to add to an existing Android or iOS app
+      group: Flutter
+      nameHint: my_module
+      namePattern: *dartName
+      nameRule: *dartNameRule
+      fields: [*org, *description, *androidLanguage, *pub, *offline]
   sdkProviders:
     - id: flutter
       kind: flutter

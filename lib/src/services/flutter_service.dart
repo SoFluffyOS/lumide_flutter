@@ -124,6 +124,10 @@ class FlutterService {
   }
 
   Future<void> create() async {
+    if (await _openNewProjectDialog()) {
+      return;
+    }
+
     try {
       final workspaceRoot = await projectService.getWorkspaceRoot();
       await _createInDirectory(workspaceRoot);
@@ -133,12 +137,32 @@ class FlutterService {
   }
 
   Future<void> createForContext(Map<String, dynamic>? args) async {
+    final folder = projectService.folderFromMenuContext(args);
+    if (await _openNewProjectDialog(parent: folder)) {
+      return;
+    }
+
     try {
-      final targetDirectory = projectService.folderFromMenuContext(args) ??
-          await projectService.getWorkspaceRoot();
+      final targetDirectory = folder ?? await projectService.getWorkspaceRoot();
       await _createInDirectory(targetDirectory);
     } catch (e) {
       await context.window.showMessage(e.toString(), type: MessageType.error);
+    }
+  }
+
+  /// Lumide's command that shows its New Project dialog, from 0.25.0.
+  static const _newProjectCommand = 'builtin.newProject';
+
+  /// Shows Lumide's New Project dialog on the Flutter app template, in
+  /// [parent] when given; false on a Lumide without it.
+  Future<bool> _openNewProjectDialog({String? parent}) async {
+    try {
+      return await context.commands.executeCommand(_newProjectCommand, {
+        'template': FlutterProjectTemplate.app.id,
+        if (parent != null) 'parent': parent,
+      });
+    } catch (_) {
+      return false;
     }
   }
 
