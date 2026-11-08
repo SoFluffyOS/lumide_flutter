@@ -52,12 +52,13 @@ enum FlutterProjectTemplate {
       if (!getsPackages) '--no-pub',
       if (request.flag('offline')) '--offline',
       '--project-name',
-      request.name,
+      request.packageName,
       request.name,
     ];
   }
 
-  /// The file to open once the project is created, relative to it.
+  /// The file to open once the project is created, relative to it, for
+  /// the package [name].
   String entryFile(String name) => switch (this) {
         app || empty || module => 'lib/main.dart',
         package || packageFfi || plugin => 'lib/$name.dart',

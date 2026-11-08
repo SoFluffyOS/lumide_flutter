@@ -10,9 +10,10 @@ LumideProjectCreateRequest _request(
 ]) =>
     LumideProjectCreateRequest(
       templateId: template.id,
-      name: 'my_app',
+      name: 'My App',
+      packageName: 'my_app',
       parent: '/projects',
-      path: '/projects/my_app',
+      path: '/projects/My App',
       values: values,
     );
 
@@ -37,6 +38,10 @@ void main() {
   test('a template takes a Dart package name, and its fields parse', () {
     final app = manifest.projectTemplates.first;
     final name = RegExp(app.namePattern ?? '');
+    expect(
+      manifest.projectTemplates.every((template) => template.packageName),
+      isTrue,
+    );
 
     expect(name.hasMatch('my_app'), isTrue);
     expect(name.hasMatch('my_app_'), isFalse);
@@ -88,14 +93,14 @@ void main() {
         '--offline',
         '--project-name',
         'my_app',
-        'my_app',
+        'My App',
       ],
     );
     expect(
       FlutterProjectTemplate.empty.createArgs(
         _request(FlutterProjectTemplate.empty),
       ),
-      ['create', '--empty', '--project-name', 'my_app', 'my_app'],
+      ['create', '--empty', '--project-name', 'my_app', 'My App'],
     );
   });
 

@@ -47,7 +47,7 @@ class FlutterProjectCreator {
     }
 
     return LumideProjectCreation(
-      openFiles: [template.entryFile(request.name)],
+      openFiles: [template.entryFile(request.packageName)],
     );
   }
 

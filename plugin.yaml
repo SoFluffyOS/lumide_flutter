@@ -72,6 +72,7 @@ contributes:
       nameHint: my_app
       namePattern: &dartName '^[a-z]([a-z0-9_]*[a-z0-9])?$'
       nameRule: &dartNameRule Use lowercase letters, digits and underscores, starting with a letter, like my_app.
+      packageName: true
       fields:
         - &platforms
           id: platforms
@@ -130,6 +131,7 @@ contributes:
       nameHint: my_app
       namePattern: *dartName
       nameRule: *dartNameRule
+      packageName: true
       fields: [*platforms, *org, *description, *androidLanguage, *pub, *offline]
     - id: flutter.package
       name: Package
@@ -138,6 +140,7 @@ contributes:
       nameHint: my_package
       namePattern: *dartName
       nameRule: *dartNameRule
+      packageName: true
       fields: [*description, *pub, *offline]
     - id: flutter.package_ffi
       name: FFI Package
@@ -146,6 +149,7 @@ contributes:
       nameHint: my_package
       namePattern: *dartName
       nameRule: *dartNameRule
+      packageName: true
       fields: [*description, *pub, *offline]
     - id: flutter.plugin
       name: Plugin
@@ -154,6 +158,7 @@ contributes:
       nameHint: my_plugin
       namePattern: *dartName
       nameRule: *dartNameRule
+      packageName: true
       fields:
         - id: platforms
           type: multiSelect
@@ -179,6 +184,7 @@ contributes:
       nameHint: my_module
       namePattern: *dartName
       nameRule: *dartNameRule
+      packageName: true
       fields: [*org, *description, *androidLanguage, *pub, *offline]
   sdkProviders:
     - id: flutter
