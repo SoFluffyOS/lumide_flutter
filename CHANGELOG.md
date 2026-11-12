@@ -6,6 +6,7 @@
 - Tell Lumide which device a run started on and where its VM service is, so the host can relate the run to what it shows, such as Dash Studio's app tab (requires Lumide 0.25.0 and later; older versions ignore it).
 - Run several Flutter apps side by side, such as on two devices: each stops on its own, and hot reload, hot restart and reload on save apply to every running app. Debugging and attaching still run one app at a time.
 - Hot reload or restart a run when Lumide asks, such as for an agent, and answer whether it worked, with the compile errors the Flutter tool logged meanwhile instead of a message (requires Lumide 0.25.0 and later).
+- Keep showing Flutter's framework errors, such as overflows, in the **Flutter** output once DevTools or Lumide's agent tools turn on structured errors, which stop Flutter from printing them.
 
 ## 1.16.0 (2026-10-21)
 

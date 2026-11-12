@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:lumide_api/lumide_api.dart';
 import 'package:lumide_flutter/src/constants.dart';
+import 'package:lumide_flutter/src/services/flutter_error_relay.dart';
 import 'package:lumide_flutter/src/services/hot_reload_controller.dart';
 import 'package:lumide_flutter/src/services/machine_requests.dart';
 import 'package:lumide_flutter/src/services/sdk_process.dart';
@@ -47,6 +48,10 @@ class FlutterRun {
 
   StreamSubscription<String>? stdoutSubscription;
   StreamSubscription<String>? stderrSubscription;
+
+  /// Writes the app's `Flutter.Error` events to the output, over a VM
+  /// service connection of its own.
+  FlutterErrorRelay? errorRelay;
 
   final _requests = MachineRequests();
 
@@ -156,10 +161,13 @@ class FlutterRun {
     _requests.cancelAll();
     reloads.cancelScheduled();
     final subscriptions = [stdoutSubscription, stderrSubscription];
+    final relay = errorRelay;
     stdoutSubscription = null;
     stderrSubscription = null;
+    errorRelay = null;
     for (final subscription in subscriptions) {
       await subscription?.cancel();
     }
+    await relay?.dispose();
   }
 }

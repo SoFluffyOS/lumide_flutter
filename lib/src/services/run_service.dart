@@ -1674,6 +1674,7 @@ class RunService implements TestDebugger {
             unawaited(_connectToVmService(wsUri));
           }
           unawaited(_reportAttached(run, wsUri));
+          unawaited(_relayErrors(run, wsUri));
         }
         return;
 
@@ -1786,6 +1787,36 @@ class RunService implements TestDebugger {
       '$message See the Flutter output for details.',
       type: MessageType.error,
     );
+  }
+
+  /// Follows [run]'s `Flutter.Error` events, which replace its printed
+  /// framework errors once structured errors are on.
+  Future<void> _relayErrors(FlutterRun run, String wsUri) async {
+    try {
+      final service = await vmServiceConnectUri(wsUri);
+      if (!_runs.contains(run) || run.errorRelay != null) {
+        await service.dispose();
+        return;
+      }
+
+      final relay = FlutterErrorRelay(service, (text) {
+        unawaited(
+          _channel?.appendLog(
+            LumideLogRecord(
+              level: 'ERROR',
+              message: text,
+              name: 'Flutter',
+              time: DateTime.now(),
+            ),
+          ),
+        );
+      });
+      run.errorRelay = relay;
+      await relay.listen();
+    } catch (error) {
+      if (!_runs.contains(run)) return;
+      await _logError('Could not follow Flutter errors', error);
+    }
   }
 
   /// Tells Lumide where the app runs and how to reach its VM service, so the
