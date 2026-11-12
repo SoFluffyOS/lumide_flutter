@@ -514,7 +514,7 @@ class _Run implements LumideTestRun {
   Future<void> end({String? summary}) async => this.summary = summary;
 }
 
-class _Tests implements LumideTests {
+class _Tests extends LumideTests {
   final runs = <_Run>[];
   final requestIds = <String?>[];
 
