@@ -6,7 +6,8 @@ The official Flutter extension for [Lumide IDE](https://lumide.dev).
 
 ## Highlights
 
-- Run, debug, attach, hot reload, and hot restart Flutter apps.
+- Run, debug, attach, hot reload, and hot restart Flutter apps, several side by side.
+- Let agents hot reload or restart a running app and read its compile errors.
 - Launch and switch devices, including stopped Android emulators and iOS Simulator.
 - Set targets, flavors, build modes, and launch configurations.
 - Use breakpoints, conditions, logpoints, stepping, stack frames, scopes, variables, and evaluation.
@@ -27,7 +28,7 @@ Use the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`).
 | `flutter.run` / `flutter.debug` / `flutter.attach` | Start or attach to an app |
 | `flutter.selectDevice` | Choose a device or launch an AVD |
 | `flutter.selectTarget` | Choose the Dart entry point |
-| `flutter.hotReload` / `flutter.hotRestart` | Apply code changes or reset state |
+| `flutter.hotReload` / `flutter.hotRestart` | Apply code changes or reset state, in every running app |
 | `flutter.test` / `flutter.testFile` / `flutter.stopTests` | Run all tests, the current file's tests, or stop |
 | `flutter.debugTestFile` | Debug the current file's tests |
 | `flutter.testWithCoverage` | Run tests and show line coverage |

@@ -3,6 +3,8 @@ export 'daemon_service.dart';
 export 'device_service.dart';
 export 'devtools_page.dart';
 export 'devtools_panel_service.dart';
+export 'flutter_run.dart';
+export 'flutter_runs.dart';
 export 'flutter_service.dart';
 export 'hot_reload_controller.dart';
 export 'launch_config_service.dart';

@@ -4,6 +4,8 @@
 
 - Create Flutter projects from Lumide's **New Project** dialog: App, Empty App, Package, FFI Package, Plugin and Module, with platforms, organization and options in one form, and a package name of its own when the folder's differs, and from the Welcome screen without a workspace. **Flutter: New Project** opens it too (requires Lumide 0.25.0 and later; older versions keep asking step by step).
 - Tell Lumide which device a run started on and where its VM service is, so the host can relate the run to what it shows, such as Dash Studio's app tab (requires Lumide 0.25.0 and later; older versions ignore it).
+- Run several Flutter apps side by side, such as on two devices: each stops on its own, and hot reload, hot restart and reload on save apply to every running app. Debugging and attaching still run one app at a time.
+- Hot reload or restart a run when Lumide asks, such as for an agent, and answer whether it worked, with the compile errors the Flutter tool logged meanwhile instead of a message (requires Lumide 0.25.0 and later).
 
 ## 1.16.0 (2026-10-21)
 

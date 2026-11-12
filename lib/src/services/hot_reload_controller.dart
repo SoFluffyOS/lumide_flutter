@@ -8,9 +8,12 @@ typedef AppRestartSender = Future<MachineResult> Function({
 });
 
 /// Receives the outcome of every request that was actually sent, once.
+/// [quiet] when everyone who asked for it reads the result themselves, such
+/// as an agent, so there is no one to tell.
 typedef AppRestartResultHandler = FutureOr<void> Function(
   MachineResult result, {
   required bool fullRestart,
+  required bool quiet,
 });
 
 /// Serializes hot reloads and hot restarts.
@@ -33,25 +36,34 @@ class HotReloadController {
 
   Future<void> _tail = Future.value();
   Future<MachineResult>? _waitingReload;
+  bool _isWaitingReloadQuiet = false;
   Timer? _debounceTimer;
 
-  Future<MachineResult> reload() {
-    if (_waitingReload case final waiting?) return waiting;
+  /// Reloads the app's code. A [quiet] reload is reported as quiet unless a
+  /// reload that is not joins it.
+  Future<MachineResult> reload({bool quiet = false}) {
+    if (_waitingReload case final waiting?) {
+      _isWaitingReloadQuiet = _isWaitingReloadQuiet && quiet;
+      return waiting;
+    }
+
+    _isWaitingReloadQuiet = quiet;
     late final Future<MachineResult> reload;
     reload = _enqueue(
       fullRestart: false,
-      onStart: () {
+      start: () {
         if (identical(_waitingReload, reload)) _waitingReload = null;
+        return _isWaitingReloadQuiet;
       },
     );
     _waitingReload = reload;
     return reload;
   }
 
-  Future<MachineResult> restart() {
+  Future<MachineResult> restart({bool quiet = false}) {
     _debounceTimer?.cancel();
     _debounceTimer = null;
-    return _enqueue(fullRestart: true);
+    return _enqueue(fullRestart: true, start: () => quiet);
   }
 
   /// Reloads once no further call arrives within [debounce].
@@ -68,19 +80,21 @@ class HotReloadController {
     _debounceTimer = null;
   }
 
+  /// [start] runs as the request leaves the queue and tells whether it is
+  /// quiet.
   Future<MachineResult> _enqueue({
     required bool fullRestart,
-    void Function()? onStart,
+    required bool Function() start,
   }) {
     final previous = _tail;
     final completer = Completer<MachineResult>();
     _tail = completer.future.then<void>((_) {});
     unawaited(() async {
       await previous;
-      onStart?.call();
+      final quiet = start();
       final result = await _sendSafely(fullRestart: fullRestart);
       try {
-        await _onResult?.call(result, fullRestart: fullRestart);
+        await _onResult?.call(result, fullRestart: fullRestart, quiet: quiet);
       } catch (_) {
         // Reporting must never stall the queue.
       }

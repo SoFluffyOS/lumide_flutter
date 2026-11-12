@@ -10,19 +10,34 @@ class MachineResult {
     required this.code,
     required this.message,
     this.cancelled = false,
+    this.errors = const [],
   });
 
   /// The request never got an answer because the app stopped first.
   const MachineResult.cancelled()
       : code = -1,
         message = 'The Flutter app is no longer running.',
-        cancelled = true;
+        cancelled = true,
+        errors = const [];
 
   final int code;
   final String message;
   final bool cancelled;
 
+  /// The errors the daemon logged while the request ran, such as compile
+  /// errors during a reload.
+  final List<String> errors;
+
   bool get isSuccess => code == 0;
+
+  MachineResult withErrors(List<String> errors) {
+    return MachineResult(
+      code: code,
+      message: message,
+      cancelled: cancelled,
+      errors: List.unmodifiable(errors),
+    );
+  }
 
   factory MachineResult.fromResponse(Map<String, dynamic> response) {
     if (response['error'] case final Object error) {

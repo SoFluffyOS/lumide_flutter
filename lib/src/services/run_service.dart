@@ -67,18 +67,23 @@ class RunService implements TestDebugger {
   LumideOutputChannel? _channel;
   LumideOutputChannel? get channel => _channel;
 
-  SdkProcess? _process;
+  /// The apps running now, by launch. Plain runs may run side by side; a
+  /// debug or attach run is the only one, as the debugger serves one
+  /// session.
+  final _runs = FlutterRuns();
+
+  /// The run the VM service connection, the debugger, the widget inspector
+  /// and DevTools serve: the first of the runs.
+  FlutterRun? _sessionRun;
 
   /// Runs tests for a `test` launch configuration.
   Future<void> Function({String? target, List<String> toolArgs})? onTestLaunch;
-  StreamSubscription<String>? _stdoutSub;
-  StreamSubscription<String>? _stderrSub;
-  bool _isRunning = false;
   bool _isLaunching = false;
 
   /// Stops the `flutter test` process while tests are debugged.
   Future<void> Function()? _stopDebuggedTests;
   bool _openPerformanceOnConnect = false;
+  bool get _isRunning => _runs.isNotEmpty || _stopDebuggedTests != null;
   bool get isRunning => _isRunning;
 
   bool get _isDebugMode =>
@@ -103,29 +108,20 @@ class RunService implements TestDebugger {
   String? _devToolsServerHost;
   int? _devToolsServerPort;
   String? _wsUri;
-  String? _activeDeviceId;
 
-  String? _activeAppId;
   String? _activeIsolateId;
   String? _selectedFlavor;
   String? _selectedBuildMode;
   List<String> _customToolArgs = const [];
   _FlutterLaunchMode? _launchMode;
-  LumideLaunchKind? _activeLaunchKind;
-  String? _activeLaunchConfigurationId;
   bool _hasDebugSession = false;
   bool _didReceiveInitialBreakpointRequest = false;
   bool _breakpointsSyncedForActiveIsolate = false;
   bool _initialPauseReached = false;
   bool _initialResumePending = false;
-  final MachineRequests _machineRequests = MachineRequests();
 
   /// Workspace folders Lumide asked for targets, one request per folder.
   final Set<String> _resolvedWorkspaceFolders = {};
-  late final HotReloadController _hotReloadController = HotReloadController(
-    send: _sendAppRestart,
-    onResult: _reportRestartResult,
-  );
   int _pendingLogCount = 0;
   int _maxPendingLogs = defaultMaxPendingLogs;
   int _pressureThreshold = defaultPressureThreshold;
@@ -201,6 +197,7 @@ class RunService implements TestDebugger {
     context.launch.onImportConfiguration(importVscodeFlutterLaunch);
     context.launch.onConfigure(_handleConfigureRequest);
     context.launch.onLaunch(_handleLaunchRequest);
+    context.launch.onReload(_handleReloadRequest);
 
     // Fetch initial configurations and register the provider.
     final initialConfigs = await _currentLaunchConfigurations();
@@ -257,16 +254,16 @@ class RunService implements TestDebugger {
     await _showRunControls(isRunning: false);
 
     context.workspace.onDidSaveTextDocument((uri) async {
-      if (!_isRunning || _activeAppId == null || !uri.endsWith('.dart')) {
-        return;
-      }
+      if (_runs.started.isEmpty || !uri.endsWith('.dart')) return;
 
       final shouldReload = await context.workspace
               .getConfiguration(confHotReloadOnSave) as bool? ??
           defaultHotReloadOnSave;
 
       if (!shouldReload) return;
-      _hotReloadController.scheduleReload();
+      for (final run in _runs.started) {
+        run.reloads.scheduleReload();
+      }
     });
   }
 
@@ -664,7 +661,16 @@ class RunService implements TestDebugger {
         }
         return await _currentLaunchConfiguration(workspaceFolder: folder);
       case 'stop':
-        await stop();
+        await stop(
+          run: switch ((request.kind, request.configuration)) {
+            (final kind?, final configuration?) => _runs.find(
+                kind: kind,
+                configurationId: configuration.id,
+                workspaceFolder: configuration.workspaceFolder,
+              ),
+            _ => null,
+          },
+        );
         return await _currentLaunchConfiguration(workspaceFolder: folder);
       default:
         return await _currentLaunchConfiguration(workspaceFolder: folder);
@@ -898,7 +904,7 @@ class RunService implements TestDebugger {
     LumideLaunchConfiguration? configuration,
     bool useSelectedConfiguration = true,
   }) async {
-    if (_isRunning || _isLaunching) {
+    if (!_canLaunch(mode)) {
       await context.window.showMessage(
         _busyMessage('before starting a new one'),
         type: MessageType.warning,
@@ -907,6 +913,11 @@ class RunService implements TestDebugger {
     }
 
     _isLaunching = true;
+    final kind = switch (mode) {
+      _FlutterLaunchMode.attach => LumideLaunchKind.attach,
+      _FlutterLaunchMode.debug => LumideLaunchKind.debug,
+      _FlutterLaunchMode.run => LumideLaunchKind.run,
+    };
     // The workspace folder the configuration runs in, kept in its arguments.
     // Null for launches without a configuration, which use the first folder.
     final workspaceFolder = workspaceFolderOf(configuration?.arguments);
@@ -916,7 +927,12 @@ class RunService implements TestDebugger {
       _ => _stringArgument(configuration, relativeTargetArgument),
     };
     String root;
+    String configurationId;
     try {
+      configurationId = switch (useSelectedConfiguration) {
+        true => configuration?.id ?? (await _currentLaunchConfiguration()).id,
+        false => (await _currentLaunchConfiguration()).id,
+      };
       root = await projectService.getProjectRoot(
         switch (useSelectedConfiguration) {
           // A target outside the configuration's folder runs in its own
@@ -941,10 +957,29 @@ class RunService implements TestDebugger {
       return;
     }
 
+    final isAlreadyRunning = _runs.find(
+          kind: kind,
+          configurationId: configurationId,
+          workspaceFolder: configuration?.workspaceFolder,
+        ) !=
+        null;
+    if (isAlreadyRunning) {
+      _isLaunching = false;
+      await context.window.showMessage(
+        _busyMessage('before starting it again'),
+        type: MessageType.warning,
+      );
+      return;
+    }
+
+    final isBeside = _runs.isNotEmpty;
+    FlutterRun? launched;
     try {
-      await _prepareForLaunch(mode);
-      _openPerformanceOnConnect = !useSelectedConfiguration &&
-          _stringArgument(configuration, 'buildMode') == 'profile';
+      if (!isBeside) {
+        await _prepareForLaunch(mode);
+        _openPerformanceOnConnect = !useSelectedConfiguration &&
+            _stringArgument(configuration, 'buildMode') == 'profile';
+      }
 
       final vscodeEntry = switch (useSelectedConfiguration) {
         true => targetService.selectedVscodeEntry,
@@ -991,7 +1026,6 @@ class RunService implements TestDebugger {
         args.add('--start-paused');
       }
       args.addAll(['-d', deviceId]);
-      _activeDeviceId = deviceId;
 
       final flavor = rawFlavor != null
           ? await launchConfigService.resolveDynamicVariables(rawFlavor,
@@ -1107,7 +1141,7 @@ class RunService implements TestDebugger {
         '$action on $deviceId using ${flutterCmd.join(' ')}',
         title: title,
       );
-      await _channel?.clear();
+      if (!isBeside) await _channel?.clear();
       if (mode == _FlutterLaunchMode.run) {
         await _channel?.show();
       }
@@ -1129,43 +1163,33 @@ class RunService implements TestDebugger {
       }
       vscodeEnv.addAll(_stringMapArgument(configuration, 'env'));
 
-      _process = await sdkManager.startFlutter(
+      final process = await sdkManager.startFlutter(
         workingDirectory,
         args,
         environment: vscodeEnv.isNotEmpty ? vscodeEnv : null,
       );
-
-      _isRunning = true;
-      _activeLaunchKind = switch (mode) {
-        _FlutterLaunchMode.attach => LumideLaunchKind.attach,
-        _FlutterLaunchMode.debug => LumideLaunchKind.debug,
-        _FlutterLaunchMode.run => LumideLaunchKind.run,
-      };
-      final activeConfig = await _currentLaunchConfiguration();
-      _activeLaunchConfigurationId = useSelectedConfiguration
-          ? configuration?.id ?? activeConfig.id
-          : activeConfig.id;
-      await context.launch.didStart(
-        LumideLaunchEvent(
-          providerId: launchProviderFlutter,
-          kind: _activeLaunchKind ?? LumideLaunchKind.run,
-          configurationId: _activeLaunchConfigurationId ?? launchConfigCurrent,
-          deviceId: _activeDeviceId,
-        ),
+      final run = FlutterRun(
+        kind: kind,
+        configurationId: configurationId,
+        workspaceFolder: configuration?.workspaceFolder,
+        deviceId: deviceId,
+        process: process,
+        onRestartResult: _reportRestartResult,
       );
-      await _showRunControls(isRunning: true);
+      launched = run;
+      _runs.add(run);
+      _sessionRun ??= run;
 
-      if (_process case final proc?) {
-        _stdoutSub = proc.stdout
-            .transform(const LineSplitter())
-            .listen(_handleStdoutLine);
+      await context.launch.didStart(run.event());
+      if (!isBeside) await _showRunControls(isRunning: true);
 
-        _stderrSub = proc.stderr.listen((data) {
-          _channel?.append(data);
-        });
-
-        unawaited(proc.exitCode.then(_handleProcessExit));
-      }
+      run.stdoutSubscription = process.stdout
+          .transform(const LineSplitter())
+          .listen((line) => _handleStdoutLine(run, line));
+      run.stderrSubscription = process.stderr.listen((data) {
+        _channel?.append(data);
+      });
+      unawaited(process.exitCode.then((code) => _handleProcessExit(run, code)));
     } catch (err) {
       await context.window.showMessage(
         'Failed to launch: $err',
@@ -1175,12 +1199,14 @@ class RunService implements TestDebugger {
         '${mode == _FlutterLaunchMode.debug ? 'Debug' : 'Run'} error: $err',
         err,
       );
-      _isRunning = false;
-      _process = null;
-      _activeAppId = null;
+      if (launched case final run?) {
+        _runs.remove(run);
+        await run.dispose();
+      }
+      if (isBeside) return;
+
+      _sessionRun = null;
       _launchMode = null;
-      _activeLaunchKind = null;
-      _activeLaunchConfigurationId = null;
       await _disconnectVmService();
       if (mode == _FlutterLaunchMode.debug) {
         await _endDebugSession(statusMessage: 'Failed to launch: $err');
@@ -1421,10 +1447,7 @@ class RunService implements TestDebugger {
   Future<void> _prepareForLaunch(_FlutterLaunchMode mode) async {
     _launchMode = mode;
     _reportedBrokenConditions.clear();
-    _activeAppId = null;
     _activeIsolateId = null;
-    _machineRequests.reset();
-    _hotReloadController.cancelScheduled();
     _devToolsUrl = null;
     _wsUri = null;
     _clearFrameCache();
@@ -1443,48 +1466,65 @@ class RunService implements TestDebugger {
     await _startDebugSession();
   }
 
-  Future<void> _handleProcessExit(int code) async {
-    final wasDebug = _isDebugMode;
-    final launchKind = _activeLaunchKind;
-    final launchConfigurationId = _activeLaunchConfigurationId;
+  Future<void> _handleProcessExit(FlutterRun run, int code) async {
+    _runs.remove(run);
+    await run.dispose();
 
-    _isRunning = false;
-    _process = null;
-    _activeAppId = null;
-    _machineRequests.cancelAll();
-    _hotReloadController.cancelScheduled();
-    _devToolsUrl = null;
-    _wsUri = null;
-    _launchMode = null;
-    _activeLaunchKind = null;
-    _activeLaunchConfigurationId = null;
-
-    await _stdoutSub?.cancel();
-    _stdoutSub = null;
-    await _stderrSub?.cancel();
-    _stderrSub = null;
-    await _disconnectVmService();
-    await _showRunControls(isRunning: false);
-
-    if (wasDebug) {
-      await _endDebugSession(
-        statusMessage: 'Process exited with code $code.',
-      );
-    } else {
-      _resetDebugRuntime();
+    if (identical(_sessionRun, run)) {
+      if (_runs.first case final next?) {
+        await _moveSessionTo(next);
+      } else {
+        await _endSession(exitCode: code);
+      }
     }
 
     await _logInfo('Process exited with code $code.');
-    if (launchKind != null && launchConfigurationId != null) {
-      await context.launch.didEnd(
-        LumideLaunchEvent(
-          providerId: launchProviderFlutter,
-          kind: launchKind,
-          configurationId: launchConfigurationId,
-          exitCode: code,
-        ),
-      );
+    await context.launch.didEnd(run.event(exitCode: code));
+  }
+
+  /// Ends the session of the last run, which exited with [exitCode].
+  Future<void> _endSession({required int exitCode}) async {
+    final wasDebug = _isDebugMode;
+    _sessionRun = null;
+    _devToolsUrl = null;
+    _wsUri = null;
+    _launchMode = null;
+
+    await _disconnectVmService();
+    await _showRunControls(isRunning: false);
+
+    if (!wasDebug) {
+      _resetDebugRuntime();
+      return;
     }
+
+    await _endDebugSession(
+      statusMessage: 'Process exited with code $exitCode.',
+    );
+  }
+
+  /// Serves [run]'s app from the VM service connection, once the run it
+  /// served exited. Only plain runs run beside others, so there is no debug
+  /// session to carry over.
+  Future<void> _moveSessionTo(FlutterRun run) async {
+    _sessionRun = run;
+    await _disconnectVmService();
+    _resetDebugRuntime();
+    _devToolsUrl = run.devToolsUrl;
+    _wsUri = run.vmServiceUri;
+    if (run.vmServiceUri case final wsUri?) {
+      unawaited(_connectToVmService(wsUri));
+    }
+  }
+
+  /// Whether a launch in [mode] may start now: one launch at a time, and
+  /// beside running apps only when it and they are plain runs, as the
+  /// debugger serves one session.
+  bool _canLaunch(_FlutterLaunchMode mode) {
+    if (_isLaunching || _stopDebuggedTests != null) return false;
+    if (_runs.isEmpty) return true;
+    return mode == _FlutterLaunchMode.run &&
+        _launchMode == _FlutterLaunchMode.run;
   }
 
   Future<void> _startDebugSession() async {
@@ -1594,7 +1634,7 @@ class RunService implements TestDebugger {
     );
   }
 
-  void _handleStdoutLine(String line) {
+  void _handleStdoutLine(FlutterRun run, String line) {
     if (line.isEmpty) return;
 
     if (!line.startsWith('[')) {
@@ -1608,34 +1648,39 @@ class RunService implements TestDebugger {
 
       for (final item in decoded) {
         if (item is! Map<String, dynamic>) continue;
-        if (_machineRequests.handle(item)) continue;
-        _handleMachineEvent(item);
+        if (run.handleResponse(item)) continue;
+        _handleMachineEvent(run, item);
       }
     } on FormatException {
       _channel?.append('$line\n');
     }
   }
 
-  void _handleMachineEvent(Map<String, dynamic> event) {
+  void _handleMachineEvent(FlutterRun run, Map<String, dynamic> event) {
     final eventName = event['event'] as String?;
     final params = event['params'] as Map<String, dynamic>? ?? {};
+    final isSessionRun = identical(run, _sessionRun);
 
     switch (eventName) {
       case 'app.start':
-        _activeAppId = params['appId'] as String?;
+        run.appId = params['appId'] as String?;
         return;
 
       case 'app.debugPort':
         if (params['wsUri'] case final String wsUri) {
-          _wsUri = wsUri;
-          unawaited(_connectToVmService(wsUri));
-          unawaited(_reportAttached(wsUri));
+          run.vmServiceUri = wsUri;
+          if (isSessionRun) {
+            _wsUri = wsUri;
+            unawaited(_connectToVmService(wsUri));
+          }
+          unawaited(_reportAttached(run, wsUri));
         }
         return;
 
       case 'app.devTools':
         if (params['uri'] case final String uri) {
-          _devToolsUrl = uri;
+          run.devToolsUrl = uri;
+          if (isSessionRun) _devToolsUrl = uri;
           unawaited(_logInfo('DevTools available at: $uri'));
         }
         return;
@@ -1655,6 +1700,7 @@ class RunService implements TestDebugger {
         if (log.isNotEmpty) {
           _channel?.append('$log\n');
         }
+        if (params['error'] == true && log.isNotEmpty) run.noteError(log);
         return;
 
       case 'app.progress':
@@ -1668,7 +1714,7 @@ class RunService implements TestDebugger {
 
         if (id == null) return;
 
-        final itemId = 'flutter.progress.$id';
+        final itemId = 'flutter.progress.${identityHashCode(run)}.$id';
         if (!finished && message != null) {
           unawaited(
             context.statusBar.createItem(
@@ -1687,14 +1733,18 @@ class RunService implements TestDebugger {
         return;
 
       case 'app.stop':
-        _activeAppId = null;
+        run.appId = null;
         return;
 
       case 'daemon.logMessage':
-        final log = params['log'] as String? ?? '';
-        if (log.isNotEmpty) {
-          _channel?.append('$log\n');
-        }
+        final log = switch (params) {
+          {'message': final String message} => message,
+          {'log': final String log} => log,
+          _ => '',
+        };
+        if (log.isEmpty) return;
+        _channel?.append('$log\n');
+        if (params['level'] == 'error') run.noteError(log);
         return;
 
       case null:
@@ -1710,39 +1760,10 @@ class RunService implements TestDebugger {
     await context.window.openUrl(url);
   }
 
-  Future<MachineResult> _sendMachineCommand(
-    String method, [
-    Map<String, dynamic>? extraParams,
-  ]) {
-    final appId = _activeAppId;
-    final proc = _process;
-    if (proc == null || appId == null) {
-      return Future.value(const MachineResult.cancelled());
-    }
-
-    final params = <String, dynamic>{'appId': appId};
-    if (extraParams != null) {
-      params.addAll(extraParams);
-    }
-
-    final (id, response) = _machineRequests.create();
-    final payload = [
-      {'id': id, 'method': method, 'params': params},
-    ];
-    proc.write('${jsonEncode(payload)}\n');
-    return response;
-  }
-
-  Future<MachineResult> _sendAppRestart({required bool fullRestart}) {
-    return _sendMachineCommand(
-      'app.restart',
-      {'fullRestart': fullRestart, 'pause': false},
-    );
-  }
-
   Future<void> _reportRestartResult(
     MachineResult result, {
     required bool fullRestart,
+    required bool quiet,
   }) async {
     if (result.cancelled) return;
     if (result.isSuccess) {
@@ -1759,6 +1780,8 @@ class RunService implements TestDebugger {
       final detail => '$action failed ($detail).',
     };
     await _logError(message);
+    if (quiet) return;
+
     await context.window.showMessage(
       '$message See the Flutter output for details.',
       type: MessageType.error,
@@ -1768,17 +1791,9 @@ class RunService implements TestDebugger {
   /// Tells Lumide where the app runs and how to reach its VM service, so the
   /// host can relate this run to what it shows, such as Dash Studio's app
   /// tab. Hosts before 0.25.0 lack the method; that is fine.
-  Future<void> _reportAttached(String wsUri) async {
+  Future<void> _reportAttached(FlutterRun run, String wsUri) async {
     try {
-      await context.launch.didAttach(
-        LumideLaunchEvent(
-          providerId: launchProviderFlutter,
-          kind: _activeLaunchKind ?? LumideLaunchKind.run,
-          configurationId: _activeLaunchConfigurationId ?? launchConfigCurrent,
-          deviceId: _activeDeviceId,
-          vmServiceUri: wsUri,
-        ),
-      );
+      await context.launch.didAttach(run.event(vmServiceUri: wsUri));
     } catch (_) {
       // An older Lumide; nothing depends on it.
     }
@@ -2451,33 +2466,86 @@ class RunService implements TestDebugger {
     }
   }
 
+  /// Hot reloads every running app.
   Future<void> hotReload() async {
-    if (!_isRunning || _activeAppId == null) return;
-    await _hotReloadController.reload();
+    await Future.wait([
+      for (final run in _runs.started) run.reloads.reload(),
+    ]);
   }
 
+  /// Hot restarts every running app.
   Future<void> hotRestart() async {
-    if (!_isRunning || _activeAppId == null) return;
+    final runs = _runs.started;
+    if (runs.isEmpty) return;
 
+    await _prepareForRestart(runs);
+    await Future.wait([
+      for (final run in runs) run.reloads.restart(),
+    ]);
+  }
+
+  Future<void> _prepareForRestart(List<FlutterRun> runs) async {
     final shouldClear = await context.workspace
             .getConfiguration(confClearLogOnHotRestart) as bool? ??
         defaultClearLogOnHotRestart;
-
-    if (shouldClear) {
+    if (shouldClear && runs.length == _runs.started.length) {
       await _channel?.clear();
     }
 
-    if (_isDebugMode) {
-      _clearFrameCache();
-      _initialPauseReached = false;
-      _initialResumePending = true;
-      await _updateDebugSession(
-        state: LumideDebugSessionState.running,
-        statusMessage: 'Hot restarting Flutter app...',
+    final restartsDebuggedApp =
+        _isDebugMode && runs.any((run) => identical(run, _sessionRun));
+    if (!restartsDebuggedApp) return;
+
+    _clearFrameCache();
+    _initialPauseReached = false;
+    _initialResumePending = true;
+    await _updateDebugSession(
+      state: LumideDebugSessionState.running,
+      statusMessage: 'Hot restarting Flutter app...',
+    );
+  }
+
+  /// Reloads or restarts the run Lumide asks for, such as for an agent, and
+  /// answers with the outcome and the errors logged meanwhile instead of a
+  /// message to the user.
+  Future<LumideLaunchReloadResult> _handleReloadRequest(
+    LumideLaunchReloadRequest request,
+  ) async {
+    if (request.providerId != launchProviderFlutter) {
+      return const LumideLaunchReloadResult(
+        ok: false,
+        message: 'Not a Flutter launch.',
       );
     }
 
-    await _hotReloadController.restart();
+    final run = _runs.find(
+      kind: request.kind,
+      configurationId: request.configurationId,
+      workspaceFolder: request.workspaceFolder,
+    );
+    if (run == null) {
+      return const LumideLaunchReloadResult(
+        ok: false,
+        message: 'This Flutter app is not running.',
+      );
+    }
+    if (!run.hasStarted) {
+      return const LumideLaunchReloadResult(
+        ok: false,
+        message: 'This Flutter app is still starting; try again once it runs.',
+      );
+    }
+
+    if (request.fullRestart) await _prepareForRestart([run]);
+    final result = switch (request.fullRestart) {
+      true => await run.reloads.restart(quiet: true),
+      false => await run.reloads.reload(quiet: true),
+    };
+    return LumideLaunchReloadResult(
+      ok: result.isSuccess,
+      message: result.message,
+      errors: result.errors,
+    );
   }
 
   Future<void> continueExecution() async {
@@ -3227,12 +3295,10 @@ class RunService implements TestDebugger {
       return false;
     }
     _stopDebuggedTests = stop;
-    _isRunning = true;
     try {
       await _prepareForLaunch(_FlutterLaunchMode.debug);
     } catch (error) {
       _stopDebuggedTests = null;
-      _isRunning = false;
       _launchMode = null;
       _resetDebugRuntime();
       await _logError('Could not start debugging tests', error);
@@ -3255,50 +3321,68 @@ class RunService implements TestDebugger {
   Future<void> endTestDebugging(int exitCode) async {
     if (_stopDebuggedTests == null) return;
     _stopDebuggedTests = null;
-    _isRunning = false;
     _launchMode = null;
     _wsUri = null;
     await _disconnectVmService();
     await _endDebugSession(statusMessage: 'Tests exited with code $exitCode.');
   }
 
-  Future<void> stop() async {
+  /// Stops [run], or every running app when it is null, once the user
+  /// confirms.
+  Future<void> stop({FlutterRun? run}) async {
     if (_stopDebuggedTests case final stopTests?) {
       await stopTests();
       return;
     }
-    if (!_isRunning || _process == null) return;
+
+    final runs = switch (run) {
+      final run? when _runs.contains(run) => [run],
+      _ => _runs.all,
+    };
+    if (runs.isEmpty) return;
 
     final confirm = await context.window.showConfirmDialog(
-      'Are you sure you want to stop the running Flutter application?',
+      switch (runs.length) {
+        1 => 'Are you sure you want to stop the running Flutter application?',
+        _ => 'Are you sure you want to stop the ${runs.length} running '
+            'Flutter applications?',
+      },
       title: 'Stop Application',
     );
     if (!confirm) return;
 
+    await Future.wait([for (final run in runs) _stopRun(run)]);
+  }
+
+  Future<void> _stopRun(FlutterRun run) async {
     await context.window.showMessage(
-      _isAttachMode ? 'Detaching from Flutter app' : 'Stopping Flutter app',
-      title: _isAttachMode
-          ? 'Flutter Attach'
-          : _isDebugMode
-              ? 'Flutter Debug'
-              : 'Flutter Run',
+      switch (run.isAttach) {
+        true => 'Detaching from Flutter app',
+        false => 'Stopping Flutter app',
+      },
+      title: switch (run.kind) {
+        LumideLaunchKind.attach => 'Flutter Attach',
+        LumideLaunchKind.debug => 'Flutter Debug',
+        _ => 'Flutter Run',
+      },
     );
 
-    if (_activeAppId != null) {
+    if (run.hasStarted) {
       unawaited(
-        _sendMachineCommand(_isAttachMode ? 'app.detach' : 'app.stop'),
+        run.request(switch (run.isAttach) {
+          true => 'app.detach',
+          false => 'app.stop',
+        }),
       );
     }
 
-    if (_process case final proc?) {
-      await proc.exitCode.timeout(
-        const Duration(seconds: 5),
-        onTimeout: () {
-          unawaited(proc.kill(force: true));
-          return -1;
-        },
-      );
-    }
+    await run.process.exitCode.timeout(
+      const Duration(seconds: 5),
+      onTimeout: () {
+        unawaited(run.process.kill(force: true));
+        return -1;
+      },
+    );
   }
 
   void _clearFrameCache() {

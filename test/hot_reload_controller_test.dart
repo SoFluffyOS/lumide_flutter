@@ -138,7 +138,7 @@ void main() {
       final controller = HotReloadController(
         send: ({required fullRestart}) async =>
             const MachineResult(code: 1, message: 'Compile error'),
-        onResult: (result, {required fullRestart}) {
+        onResult: (result, {required fullRestart, required quiet}) {
           reported.add('$fullRestart:${result.message}');
         },
       );
@@ -150,6 +150,34 @@ void main() {
       expect(reported, ['false:Compile error']);
     });
 
+    test('a quiet reload that a told one joins is told', () async {
+      final reported = <bool>[];
+      final firstGate = Completer<MachineResult>();
+      var sends = 0;
+      final controller = HotReloadController(
+        send: ({required fullRestart}) {
+          sends++;
+          return switch (sends) {
+            1 => firstGate.future,
+            _ => Future.value(_ok),
+          };
+        },
+        onResult: (result, {required fullRestart, required quiet}) {
+          reported.add(quiet);
+        },
+      );
+
+      final inFlight = controller.reload(quiet: true);
+      await pumpEventQueue();
+      final quiet = controller.reload(quiet: true);
+      final told = controller.reload();
+      firstGate.complete(_ok);
+      await Future.wait([inFlight, quiet, told]);
+      await controller.restart(quiet: true);
+
+      expect(reported, [true, false, true]);
+    });
+
     test('keeps going when a send or report throws', () async {
       var sends = 0;
       final controller = HotReloadController(
@@ -158,7 +186,7 @@ void main() {
           if (sends == 1) throw StateError('stdin closed');
           return _ok;
         },
-        onResult: (result, {required fullRestart}) {
+        onResult: (result, {required fullRestart, required quiet}) {
           throw StateError('report failed');
         },
       );
