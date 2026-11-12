@@ -1083,6 +1083,8 @@ class RunService implements TestDebugger {
           ? await launchConfigService.resolveDynamicVariables(rawTarget,
               ctx: varCtx)
           : null;
+      final targetAt = args.length;
+      var projectTarget = path.join('lib', 'main.dart');
 
       if (selectedTarget != null) {
         final targetAbsolute = path.isAbsolute(selectedTarget)
@@ -1107,6 +1109,7 @@ class RunService implements TestDebugger {
         final relativeTarget =
             path.relative(targetAbsolute, from: workingDirectory);
         args.addAll(['-t', relativeTarget]);
+        projectTarget = relativeTarget;
       }
 
       // Add extra launch entry args
@@ -1118,6 +1121,27 @@ class RunService implements TestDebugger {
       }
       args.addAll(
           _stringListArgument(configuration, 'args', fallback: const []));
+
+      final rawEnv = vscodeEntry?.env;
+      final vscodeEnv = <String, String>{};
+      if (rawEnv != null) {
+        for (final entry in rawEnv.entries) {
+          vscodeEnv[entry.key] = await launchConfigService
+              .resolveDynamicVariables(entry.value, ctx: varCtx);
+        }
+      }
+      vscodeEnv.addAll(_stringMapArgument(configuration, 'env'));
+
+      if (mode != _FlutterLaunchMode.attach) {
+        await _startInRaccoonViews(
+          args,
+          environment: vscodeEnv,
+          targetAt: targetAt,
+          projectDirectory: workingDirectory,
+          target: projectTarget,
+          deviceId: deviceId,
+        );
+      }
 
       final title = switch (mode) {
         _FlutterLaunchMode.attach => 'Flutter Attach',
@@ -1152,16 +1176,6 @@ class RunService implements TestDebugger {
       await _logInfo(
         '$action: $executable ${finalArgs.join(' ')}\nWorking Directory: $workingDirectory',
       );
-
-      final rawEnv = vscodeEntry?.env;
-      final vscodeEnv = <String, String>{};
-      if (rawEnv != null) {
-        for (final entry in rawEnv.entries) {
-          vscodeEnv[entry.key] = await launchConfigService
-              .resolveDynamicVariables(entry.value, ctx: varCtx);
-        }
-      }
-      vscodeEnv.addAll(_stringMapArgument(configuration, 'env'));
 
       final process = await sdkManager.startFlutter(
         workingDirectory,
@@ -1421,6 +1435,59 @@ class RunService implements TestDebugger {
     if (quote != null) return null;
     if (buffer.isNotEmpty) args.add(buffer.toString());
     return args;
+  }
+
+  /// Makes a run on a Raccoon device start in views mode where it can
+  /// ([RaccoonViewsLaunch]): the entry in place of the target in [args],
+  /// whose `-t` is at [targetAt] when given, and the runner's flag in
+  /// [environment].
+  Future<void> _startInRaccoonViews(
+    List<String> args, {
+    required Map<String, String> environment,
+    required int targetAt,
+    required String projectDirectory,
+    required String target,
+    required String deviceId,
+  }) async {
+    final buildMode = switch ((
+      args.contains('--release'),
+      args.contains('--profile'),
+    )) {
+      (true, _) => 'release',
+      (_, true) => 'profile',
+      _ => 'debug',
+    };
+    final enabled =
+        await context.workspace.getConfiguration(confRaccoonViews) as bool?;
+    final views = await RaccoonViewsLaunch.plan(
+      projectDirectory: projectDirectory,
+      target: target,
+      deviceId: deviceId,
+      buildMode: buildMode,
+      environment: environment,
+      enabled: enabled ?? true,
+    );
+    switch (views) {
+      case RaccoonViewsEntry(target: final entry):
+        final hasTarget = args.length > targetAt + 1 && args[targetAt] == '-t';
+        if (hasTarget) {
+          args[targetAt + 1] = entry;
+        } else {
+          args.insertAll(targetAt, ['-t', entry]);
+        }
+        environment.addAll(views.environment);
+        await _logInfo(
+          'Raccoon: the app starts in views mode from $entry, so Add View '
+          'opens a view of this run.',
+        );
+      case RaccoonViewsSkipped(:final reason?):
+        await _logInfo(
+          'Raccoon: the app starts from its own main, since $reason; Add '
+          'View starts a run of its own.',
+        );
+      case RaccoonViewsSkipped():
+        break;
+    }
   }
 
   String? _firstReservedToolArg(List<String> args) {

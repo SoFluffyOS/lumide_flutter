@@ -7,6 +7,7 @@
 - Run several Flutter apps side by side, such as on two devices: each stops on its own, and hot reload, hot restart and reload on save apply to every running app. Debugging and attaching still run one app at a time.
 - Hot reload or restart a run when Lumide asks, such as for an agent, and answer whether it worked, with the compile errors the Flutter tool logged meanwhile instead of a message (requires Lumide 0.25.0 and later).
 - Keep showing Flutter's framework errors, such as overflows, in the **Flutter** output once DevTools or Lumide's agent tools turn on structured errors, which stop Flutter from printing them.
+- On macOS and Linux, start debug runs on a Raccoon device in views mode, so **Add View** on a Lumide board opens one more view of the running app at once instead of building a second run. An app with a binding of its own, or one that runs in `runZonedGuarded`, keeps its own `main`, and the **Flutter** output says why. Turn it off with the **Raccoon Views** setting.
 
 ## 1.16.0 (2026-10-21)
 

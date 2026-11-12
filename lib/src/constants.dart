@@ -36,6 +36,7 @@ const String confClearLogOnHotRestart = 'flutter.clearLogOnHotRestart';
 const String confMaxPendingLogs = 'flutter.maxPendingLogs';
 const String confPressureThreshold = 'flutter.pressureThreshold';
 const String confScanDevicesOnStartup = 'flutter.scanDevicesOnStartup';
+const String confRaccoonViews = 'flutter.raccoonViews';
 
 // defaults
 const int defaultLogEntryLimit = 5000;

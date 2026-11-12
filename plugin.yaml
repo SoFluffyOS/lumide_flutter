@@ -63,6 +63,11 @@ configuration:
     default: 10
     title: 'Log Pressure Threshold'
     description: 'When pending log count exceeds this, skip expensive VM lookups for faster processing.'
+  - key: flutter.raccoonViews
+    type: boolean
+    default: true
+    title: 'Raccoon Views'
+    description: 'On macOS and Linux, start debug runs on a Raccoon device in views mode, so Add View on a board opens a view of the running app at once. Turn off to start them from the app''s own main.'
 contributes:
   projectTemplates:
     - id: flutter.app

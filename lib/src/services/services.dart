@@ -18,6 +18,8 @@ export 'project_creator.dart';
 export 'project_service.dart';
 export 'project_templates.dart';
 export 'pub_get_on_save.dart';
+export 'raccoon_views_entry.dart';
+export 'raccoon_views_launch.dart';
 export 'run_service.dart';
 export 'sdk/sdk.dart';
 export 'sdk_manager.dart';
